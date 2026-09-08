@@ -42,7 +42,7 @@
 - `DEVLOG.md` — решения с датой и временем; `PROMPTS.md` — промпты владельца как есть.
 - Любое допущение агента фиксируется в DEVLOG.
 
-## 2026-09-08 20:15 — Дизайн каркаса (день 1) и допущения
+## 2026-09-08 20:13 — Дизайн каркаса (день 1) и допущения
 
 **Границы этапа.** Только каркас: `GET /api/health`, подключение к базе из переменных окружения,
 инициализированный Alembic, smoke-тест, страница с картой Бишкека, docker-compose, `.env.example`,
@@ -93,14 +93,14 @@ Postgres, поэтому CI пока работает без сервиса ба
 **CI.** GitHub Actions на `push` в `main` и на `pull_request`: job `backend` (ruff check, ruff format
 --check, pytest) и job `frontend` (`npm ci`, ESLint, `npm run build`).
 
-## 2026-09-08 20:20 — Шаблон фронтенда: oxlint вместо ESLint
+## 2026-09-08 20:19 — Шаблон фронтенда: oxlint вместо ESLint
 
 Актуальный `create-vite` (9.2) генерирует проект с **oxlint** (`.oxlintrc.json`, `npm run lint`)
 вместо ESLint. Оставили как есть: линтер штатный для шаблона, быстрый, конфиг из коробки.
 В CI шаг «lint» фронтенда — это `npm run lint` (oxlint). react-leaflet 5 требует React 19 —
 совпадает с шаблоном.
 
-## 2026-09-08 20:35 — Проверка стека в Docker
+## 2026-09-08 20:30 — Проверка стека в Docker
 
 `docker compose up --build`: db → backend (`alembic upgrade head` создал `alembic_version`,
 затем uvicorn) → frontend. Health отвечает `{"status":"ok"}` на `localhost:8000` и через nginx на
@@ -117,7 +117,7 @@ Postgres, поэтому CI пока работает без сервиса ба
   в момент запроса, чтобы не падать при пересоздании контейнера бэкенда;
 - `.playwright-mcp/` добавлен в `.gitignore` — Playwright MCP пишет снапшоты в корень репозитория.
 
-## 2026-09-08 20:45 — CI
+## 2026-09-08 20:33 — CI
 
 GitHub Actions, два независимых job'а: `backend` (uv sync --locked, ruff check, ruff format --check,
 pytest) и `frontend` (npm ci, oxlint, tsc + vite build). Версии экшенов закреплены по актуальным
@@ -126,7 +126,7 @@ Node 22 в CI и в Docker-образе — одна версия. Postgres-се
 требуют базы. Сборку Docker-образов в CI не добавляли — не входит в критерии этапа, можно добавить
 job с `docker compose build` позже.
 
-## 2026-09-08 20:50 — Блокер: GitHub CLI не авторизован
+## 2026-09-08 20:34 — Блокер: GitHub CLI не авторизован
 
 `gh auth status` показал, что GitHub CLI не залогинен, а у репозитория нет remote. Пуш ветки и
 создание PR отложены до `gh auth login` владельцем — агент не вводит учётные данные и токены.
