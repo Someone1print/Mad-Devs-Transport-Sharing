@@ -17,3 +17,10 @@
 
 Проверяем так: docker compose up --build поднимает всё, карта открывается на localhost, /api/health отвечает {"status":"ok"}, тесты и линт зелёные, после пуша CI зелёный и открыт PR с нормальным описанием.
 ```
+
+## 2026-09-08 20:48 — Remote репозитория
+
+```text
+https://github.com/Someone1print/Mad-Devs-Transport-Sharing.git
+вот ссылка на репозиторий этого проекта
+```

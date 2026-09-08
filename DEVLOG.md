@@ -131,3 +131,12 @@ job с `docker compose build` позже.
 `gh auth status` показал, что GitHub CLI не залогинен, а у репозитория нет remote. Пуш ветки и
 создание PR отложены до `gh auth login` владельцем — агент не вводит учётные данные и токены.
 Ветка `feature/day1-scaffold` полностью готова локально, описание PR подготовлено.
+
+## 2026-09-08 20:48 — Remote и публикация ветки
+
+Владелец прислал URL репозитория `Someone1print/Mad-Devs-Transport-Sharing` (пустой, без коммитов).
+Добавлен `origin`; порядок публикации: сначала `main` с единственным стартовым коммитом, затем
+`feature/day1-scaffold` и PR через `gh pr create`. GitHub CLI авторизуется владельцем через
+device flow (`gh auth login --web`): агент только запускает процесс и показывает одноразовый код,
+учётные данные не вводит. Для `git push` используется credential helper из gh разово, через
+`git -c credential.helper=...`, без изменения глобального gitconfig.
