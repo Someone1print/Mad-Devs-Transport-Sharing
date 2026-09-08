@@ -1,0 +1,55 @@
+name: transport-sharing
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-scooter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scooter}
+      POSTGRES_DB: ${POSTGRES_DB:-scooter}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scooter} -d ${POSTGRES_DB:-scooter}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  backend:
+    build: ./backend
+    environment:
+      # Inside the compose network the database is always db:5432,
+      # regardless of the port published on the host.
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-scooter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scooter}
+      POSTGRES_DB: ${POSTGRES_DB:-scooter}
+      DEBUG: ${DEBUG:-false}
+    # Apply migrations (verifies the DB connection), then serve the API
+    command: sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
