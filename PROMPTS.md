@@ -24,3 +24,9 @@
 https://github.com/Someone1print/Mad-Devs-Transport-Sharing.git
 вот ссылка на репозиторий этого проекта
 ```
+
+## 2026-09-08 21:26 — Авторизация gh выполнена
+
+```text
+Теперь должно работать
+```
