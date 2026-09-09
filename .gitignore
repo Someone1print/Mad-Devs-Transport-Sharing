@@ -37,3 +37,6 @@ desktop.ini
 
 # --- Misc ---
 *.log
+
+# --- Tool artifacts ---
+.playwright-mcp/
