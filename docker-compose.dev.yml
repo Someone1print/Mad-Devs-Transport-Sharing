@@ -1,0 +1,30 @@
+# Development overlay: hot reload for the backend and the frontend.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Frontend: Vite dev server on http://localhost:5173 (HMR), /api proxied to the backend.
+# Backend:  uvicorn --reload with app/ and alembic/ bind-mounted.
+# The dev port is fixed at 5173 because Vite's HMR client connects to the page's own port.
+
+services:
+  backend:
+    command: sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    environment:
+      # inotify events do not cross bind mounts from Windows/macOS hosts; poll instead
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+
+  frontend:
+    build:
+      target: dev
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
+      VITE_WATCH_POLLING: "true"
+    volumes:
+      - ./frontend:/app
+      # keep the image's Linux node_modules instead of the host's (native binaries differ)
+      - /app/node_modules
+    ports: !override
+      - "5173:5173"

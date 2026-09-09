@@ -37,6 +37,27 @@ docker compose up --build
 
 Остановить: `docker compose down` (вместе с данными базы — `docker compose down -v`).
 
+## Режим разработки (hot reload)
+
+Стек из «Быстрого старта» собирает фронтенд в статику, поэтому каждое изменение кода требует
+пересборки образа. Для разработки есть overlay `docker-compose.dev.yml`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+| Что | Как работает в dev-режиме |
+| --- | --- |
+| Фронтенд | Vite dev server на http://localhost:5173 с HMR; каталог `frontend/` примонтирован в контейнер, `/api` проксируется на бэкенд |
+| Бэкенд | `uvicorn --reload` на http://localhost:8000; примонтированы `backend/app` и `backend/alembic` |
+| База | та же, что в обычном режиме |
+
+После изменения зависимостей (`package.json`, `pyproject.toml`) пересоберите образы: запустите ту же
+команду с `--build -V` (`-V` обновляет `node_modules` внутри контейнера фронтенда).
+
+Порт dev-сервера фиксирован (5173): HMR-клиент Vite подключается к порту страницы. Работать без Docker
+можно так же удобно — см. раздел «Локальная разработка без Docker».
+
 ## Локальная разработка без Docker
 
 ### Backend
@@ -112,10 +133,11 @@ Alembic берёт URL базы из тех же переменных `POSTGRES_
 │   ├── src/
 │   │   ├── components/       CityMap — карта на react-leaflet
 │   │   └── config/           константы карты (центр Бишкека, тайлы OSM)
-│   ├── Dockerfile            сборка → nginx
+│   ├── Dockerfile            стадии deps / dev / build → nginx
 │   └── nginx.conf            статика + прокси /api → backend
 ├── .github/workflows/ci.yml  GitHub Actions
 ├── docker-compose.yml        postgres, backend, frontend
+├── docker-compose.dev.yml    overlay для разработки: hot reload фронта и бэка
 ├── .env.example
 ├── DEVLOG.md                 журнал решений и допущений
 └── PROMPTS.md                промпты владельца проекта
