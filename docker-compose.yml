@@ -29,6 +29,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scooter}
       POSTGRES_DB: ${POSTGRES_DB:-scooter}
       DEBUG: ${DEBUG:-false}
+      LOW_BATTERY_THRESHOLD: ${LOW_BATTERY_THRESHOLD:-15}
     # Apply migrations (verifies the DB connection), seed the demo fleet, then serve the API
     command: sh -c "alembic upgrade head && python -m app.seed && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
@@ -50,6 +51,17 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+  simulator:
+    build: ./simulator
+    environment:
+      BACKEND_URL: http://backend:8000
+      SIM_ACTIVE_SCOOTERS: ${SIM_ACTIVE_SCOOTERS:-6}
+      SIM_INTERVAL_SECONDS: ${SIM_INTERVAL_SECONDS:-1.5}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:

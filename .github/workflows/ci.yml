@@ -58,6 +58,33 @@ jobs:
       - name: Test
         run: uv run pytest
 
+  simulator:
+    name: Simulator (ruff + pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: simulator
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up uv (installs Python from simulator/.python-version)
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: simulator/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Test
+        run: uv run pytest
+
   frontend:
     name: Frontend (lint + build)
     runs-on: ubuntu-latest
