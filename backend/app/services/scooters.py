@@ -1,4 +1,10 @@
-from app.models import ScooterStatus
+from collections.abc import Sequence
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import Scooter, ScooterStatus
+from app.schemas.scooter import TelemetryIn
 
 
 def status_after_telemetry(current: ScooterStatus, battery: int, threshold: int) -> ScooterStatus:
@@ -13,3 +19,24 @@ def status_after_telemetry(current: ScooterStatus, battery: int, threshold: int)
     if current is ScooterStatus.UNAVAILABLE:
         return ScooterStatus.AVAILABLE
     return current
+
+
+async def list_scooters(session: AsyncSession) -> Sequence[Scooter]:
+    return (await session.scalars(select(Scooter).order_by(Scooter.code))).all()
+
+
+async def apply_telemetry(
+    session: AsyncSession, telemetry: TelemetryIn, threshold: int
+) -> Scooter | None:
+    """Store the reported position and battery; returns None if the code is unknown."""
+    scooter = await session.scalar(select(Scooter).where(Scooter.code == telemetry.code))
+    if scooter is None:
+        return None
+
+    scooter.lat = telemetry.lat
+    scooter.lon = telemetry.lon
+    scooter.battery = telemetry.battery
+    scooter.status = status_after_telemetry(scooter.status, telemetry.battery, threshold)
+    await session.commit()
+    await session.refresh(scooter)
+    return scooter

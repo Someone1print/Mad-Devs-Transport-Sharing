@@ -28,6 +28,10 @@ class Scooter(Base):
         default=ScooterStatus.AVAILABLE,
         server_default=ScooterStatus.AVAILABLE.value,
     )
+    # clock_timestamp() is the real wall-clock time of the write; now() would be the transaction
+    # start and could not distinguish two updates made in the same transaction.
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        server_default=func.clock_timestamp(),
+        onupdate=func.clock_timestamp(),
     )

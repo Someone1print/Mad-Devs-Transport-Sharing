@@ -33,7 +33,7 @@ def upgrade() -> None:
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=sa.text("clock_timestamp()"),
             nullable=False,
         ),
         sa.CheckConstraint("battery BETWEEN 0 AND 100", name=op.f("ck_scooters_battery_range")),
