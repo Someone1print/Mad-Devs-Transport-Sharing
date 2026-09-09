@@ -2,17 +2,19 @@
 
 Сервис шеринга самокатов — тестовое задание на вакансию Agentic Developer.
 
-Клиент-серверное приложение: отдельный бэкенд (REST API), отдельный фронтенд (SPA с картой),
-реляционная база. Всё поднимается одной командой через Docker Compose.
+Клиент-серверное приложение: отдельный бэкенд (REST API + WebSocket), отдельный фронтенд (SPA
+с картой), реляционная база и симулятор телеметрии. Всё поднимается одной командой через Docker
+Compose.
 
 ## Стек
 
 | Слой | Технологии |
 | --- | --- |
 | Backend | Python 3.12, FastAPI, SQLAlchemy 2 (async, asyncpg), Alembic, pydantic-settings; uv, ruff, pytest |
-| Frontend | React 19, Vite, TypeScript, react-leaflet + OpenStreetMap; oxlint |
+| Frontend | React 19, Vite, TypeScript, react-leaflet + OpenStreetMap; oxlint, vitest |
+| Simulator | Python 3.12, httpx; uv, ruff, pytest |
 | База | PostgreSQL 16 |
-| Инфраструктура | Docker Compose, nginx (раздача фронтенда и прокси `/api`), GitHub Actions |
+| Инфраструктура | Docker Compose, nginx (раздача фронтенда и прокси `/api`, включая WebSocket), GitHub Actions |
 
 ## Быстрый старт (Docker)
 
@@ -23,19 +25,50 @@ cp .env.example .env        # необязательно: у всех перем
 docker compose up --build
 ```
 
-После запуска:
+Поднимаются четыре сервиса: `db`, `backend` (применяет миграции и сидит 18 самокатов), `frontend`
+и `simulator`, который двигает самокаты по Бишкеку и шлёт телеметрию. Через несколько секунд после
+старта на карте появляются маркеры, и часть из них едет.
 
 | Что | Адрес |
 | --- | --- |
 | Карта (фронтенд) | http://localhost:3000 |
-| Health бэкенда | http://localhost:8000/api/health → `{"status":"ok"}` (также http://localhost:3000/api/health через nginx) |
+| Список самокатов | http://localhost:3000/api/scooters (и http://localhost:8000/api/scooters напрямую) |
+| WebSocket с обновлениями | `ws://localhost:3000/api/ws` |
+| Health / readiness бэкенда | http://localhost:8000/api/health → `{"status":"ok"}`, http://localhost:8000/api/health/db |
 | Swagger UI | http://localhost:8000/api/docs |
-| PostgreSQL | `localhost:5432`, пользователь/пароль/база — `scooter` |
-
-При старте бэкенд применяет миграции (`alembic upgrade head`) и только потом поднимает API;
-фронтенд стартует после того, как бэкенд стал `healthy`.
+| PostgreSQL | `localhost:5432` (или `POSTGRES_PORT` из `.env`), пользователь/пароль/база — `scooter` |
 
 Остановить: `docker compose down` (вместе с данными базы — `docker compose down -v`).
+
+### Что проверить на карте
+
+- Маркеры окрашены по статусу (легенда в шапке): свободен, забронирован, в поездке, недоступен.
+  В попапе — код, заряд и статус.
+- Откройте две вкладки: обе получают одни и те же обновления по WebSocket, маркеры двигаются
+  синхронно, без перезагрузки страницы. Индикатор в шапке показывает состояние соединения.
+- Самокат с зарядом ниже `LOW_BATTERY_THRESHOLD` (15 %) становится недоступным и показывается серым.
+  В сиде таких два (`KG-006`, `KG-012`); симулятор «заряжает» недоступные самокаты через
+  `SIM_RECHARGE_SECONDS` (3 минуты), а у едущих заряд падает, так что серые маркеры появляются и
+  позже. Правило можно вызвать вручную:
+
+```bash
+curl -X POST http://localhost:8000/api/telemetry -H "Content-Type: application/json" \
+  -d '{"code": "KG-001", "lat": 42.8756, "lon": 74.6036, "battery": 5}'
+```
+
+## API
+
+| Метод и путь | Назначение |
+| --- | --- |
+| `GET /api/health` | liveness, без обращения к базе |
+| `GET /api/health/db` | readiness: `SELECT 1`, при недоступной базе — 503 |
+| `GET /api/scooters` | все самокаты: `code`, `lat`, `lon`, `battery`, `status`, `updated_at` |
+| `POST /api/telemetry` | `{code, lat, lon, battery}` от самоката; отвечает актуальным состоянием, 404 для неизвестного кода |
+| `WS /api/ws` | сервер шлёт `{"type": "scooter.updated", "scooter": {...}}` после каждой телеметрии |
+
+Правило заряда: если `battery` строго ниже порога, самокат получает статус `unavailable`; когда
+телеметрия приносит заряд не ниже порога, недоступный самокат снова становится `available`.
+Статусы `reserved` и `riding` телеметрия не меняет.
 
 ## Режим разработки (hot reload)
 
@@ -48,9 +81,9 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 | Что | Как работает в dev-режиме |
 | --- | --- |
-| Фронтенд | Vite dev server на http://localhost:5173 с HMR; каталог `frontend/` примонтирован в контейнер, `/api` проксируется на бэкенд |
+| Фронтенд | Vite dev server на http://localhost:5173 с HMR; каталог `frontend/` примонтирован в контейнер, `/api` и WebSocket проксируются на бэкенд |
 | Бэкенд | `uvicorn --reload` на http://localhost:8000; примонтированы `backend/app` и `backend/alembic` |
-| База | та же, что в обычном режиме |
+| База и симулятор | те же, что в обычном режиме |
 
 После изменения зависимостей (`package.json`, `pyproject.toml`) пересоберите образы: запустите ту же
 команду с `--build -V` (`-V` обновляет `node_modules` внутри контейнера фронтенда).
@@ -63,17 +96,26 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ### Backend
 
 Нужен [uv](https://docs.astral.sh/uv/) — он сам поставит Python 3.12 из `backend/.python-version`.
+Для интеграционных тестов и запуска нужна база: `docker compose up -d db`.
 
 ```bash
 cd backend
 uv sync                                  # .venv + зависимости (включая dev)
+uv run alembic upgrade head              # миграции
+uv run python -m app.seed                # демо-парк (только в пустую таблицу)
 uv run uvicorn app.main:app --reload     # http://localhost:8000/api/health
-uv run pytest                            # тесты
-uv run ruff check . && uv run ruff format --check .   # линт и формат
+uv run pytest                            # все тесты, включая интеграционные с базой
+uv run pytest -m "not db"                # только быстрые тесты без базы
+uv run ruff check . && uv run ruff format --check .
 ```
 
 Настройки читаются из переменных окружения либо из `.env` в корне репозитория и/или в `backend/`
-(см. `app/core/config.py`). Базу для локального запуска удобно взять из compose: `docker compose up db`.
+(см. `app/core/config.py`). Интеграционные тесты сами создают базу `<POSTGRES_DB>_test`, прогоняют
+в ней миграции и удаляют её после прогона; каждый тест выполняется в транзакции с откатом.
+
+Если порт 5432 на хосте занят (например, локально установленным PostgreSQL), задайте в `.env`
+другой `POSTGRES_PORT` (скажем, `15432`): compose опубликует базу на нём, а бэкенд и тесты подхватят
+значение из того же `.env`.
 
 ### Frontend
 
@@ -82,12 +124,42 @@ uv run ruff check . && uv run ruff format --check .   # линт и формат
 ```bash
 cd frontend
 npm install
-npm run dev      # http://localhost:5173, запросы к /api проксируются на localhost:8000
+npm run dev      # http://localhost:5173, /api и WebSocket проксируются на localhost:8000
 npm run lint     # oxlint
+npm test         # vitest
 npm run build    # tsc + vite build → dist/
 ```
 
 Адрес бэкенда для dev-прокси можно переопределить переменной `VITE_API_PROXY_TARGET`.
+
+### Simulator
+
+```bash
+cd simulator
+uv sync
+uv run pytest
+uv run ruff check . && uv run ruff format --check .
+BACKEND_URL=http://localhost:8000 uv run python -m scootersim
+```
+
+## Симулятор
+
+Отдельный сервис `simulator` (пакет `scootersim`): берёт список самокатов у бэкенда, часть из них
+отправляет в поездки к случайным точкам центра Бишкека, у едущих падает заряд, и раз в
+`SIM_INTERVAL_SECONDS` шлёт телеметрию по HTTP. Самокат, который бэкенд пометил недоступным,
+«заряжает техник» через `SIM_RECHARGE_SECONDS`. Недоступность бэкенда симулятор переживает: пишет
+предупреждение, ждёт с экспоненциальной паузой (до 30 с) и пробует снова, процесс не завершается.
+
+| Переменная | По умолчанию | Назначение |
+| --- | --- | --- |
+| `BACKEND_URL` | `http://localhost:8000` (в compose — `http://backend:8000`) | адрес API |
+| `SIM_ACTIVE_SCOOTERS` | `6` | сколько самокатов едут одновременно |
+| `SIM_INTERVAL_SECONDS` | `1.5` | период тика и отправки телеметрии |
+| `SIM_SPEED_KMH` | `40` | скорость (завышена, чтобы движение было заметно) |
+| `SIM_DRAIN_PER_KM` | `4` | расход заряда в процентах на километр (завышен для демо) |
+| `SIM_RECHARGE_SECONDS` | `180` | через сколько «техник» заряжает недоступный самокат |
+| `SIM_MIN_RIDE_BATTERY` | `20` | ниже этого заряда самокат не начинает поездку |
+| `SIM_HEARTBEAT_TICKS` | `20` | как часто стоящие самокаты шлют телеметрию |
 
 ## Миграции
 
@@ -112,6 +184,8 @@ Alembic берёт URL базы из тех же переменных `POSTGRES_
 | `BACKEND_PORT` | `8000` | порт бэкенда на хосте |
 | `FRONTEND_PORT` | `3000` | порт фронтенда на хосте |
 | `DEBUG` | `false` | SQL-логи SQLAlchemy |
+| `LOW_BATTERY_THRESHOLD` | `15` | порог заряда, ниже которого самокат недоступен |
+| `SIM_ACTIVE_SCOOTERS` / `SIM_INTERVAL_SECONDS` | `6` / `1.5` | параметры симулятора (остальные — в разделе «Симулятор») |
 
 ## Структура репозитория
 
@@ -119,24 +193,32 @@ Alembic берёт URL базы из тех же переменных `POSTGRES_
 .
 ├── backend/                  FastAPI-приложение
 │   ├── app/
-│   │   ├── api/              роутеры и обработчики (сейчас: health)
+│   │   ├── api/              роутеры: health, scooters (telemetry, list), ws
 │   │   ├── core/             настройки (pydantic-settings)
 │   │   ├── db/               Base, async engine, сессии
-│   │   ├── models/           ORM-модели
+│   │   ├── models/           ORM-модели (Scooter, ScooterStatus)
+│   │   ├── realtime/         хаб WebSocket-соединений и события
 │   │   ├── schemas/          Pydantic-схемы
-│   │   └── services/         бизнес-логика
+│   │   ├── services/         бизнес-логика (телеметрия, правило заряда)
+│   │   └── seed.py           демо-парк самокатов
 │   ├── alembic/              миграции (async env)
-│   ├── tests/                pytest
+│   ├── tests/                pytest: юнит + интеграционные с PostgreSQL
 │   ├── Dockerfile
 │   └── pyproject.toml        зависимости, ruff, pytest
 ├── frontend/                 React + Vite
 │   ├── src/
-│   │   ├── components/       CityMap — карта на react-leaflet
-│   │   └── config/           константы карты (центр Бишкека, тайлы OSM)
+│   │   ├── api/              типы и HTTP-клиент
+│   │   ├── components/       CityMap, ScooterMarkers
+│   │   ├── config/           константы карты и статусов
+│   │   └── realtime/         стор самокатов и хук WebSocket
 │   ├── Dockerfile            стадии deps / dev / build → nginx
-│   └── nginx.conf            статика + прокси /api → backend
+│   └── nginx.conf            статика + прокси /api и /api/ws → backend
+├── simulator/                симулятор телеметрии (пакет scootersim)
+│   ├── scootersim/           config, geo, fleet, client, runner
+│   ├── tests/
+│   └── Dockerfile
 ├── .github/workflows/ci.yml  GitHub Actions
-├── docker-compose.yml        postgres, backend, frontend
+├── docker-compose.yml        postgres, backend, frontend, simulator
 ├── docker-compose.dev.yml    overlay для разработки: hot reload фронта и бэка
 ├── .env.example
 ├── DEVLOG.md                 журнал решений и допущений
@@ -147,8 +229,10 @@ Alembic берёт URL базы из тех же переменных `POSTGRES_
 
 GitHub Actions запускается на push в `main` и на pull request'ах:
 
-- **backend** — `uv sync --locked`, `ruff check`, `ruff format --check`, `pytest`;
-- **frontend** — `npm ci`, `npm run lint`, `npm run build`.
+- **backend** — сервис `postgres:16`, `uv sync --locked`, `ruff check`, `ruff format --check`, `pytest`
+  (включая интеграционные тесты с базой);
+- **simulator** — `uv sync --locked`, `ruff check`, `ruff format --check`, `pytest`;
+- **frontend** — `npm ci`, `npm run lint`, `npm test`, `npm run build`.
 
 ## Процесс разработки
 
