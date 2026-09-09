@@ -30,6 +30,11 @@ pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 markers = ["db: needs a real PostgreSQL (docker compose up -d db); run unit tests only with -m 'not db'"]
+# deprecations inside Starlette's TestClient (used for the WebSocket test), not in our code
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:DeprecationWarning",
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+]
 
 [tool.ruff]
 target-version = "py312"

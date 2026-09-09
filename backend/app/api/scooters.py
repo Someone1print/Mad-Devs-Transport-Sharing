@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.session import get_db
+from app.realtime.hub import hub, scooter_updated_event
 from app.schemas.scooter import ScooterOut, TelemetryIn
 from app.services import scooters as scooter_service
 
@@ -28,4 +29,6 @@ async def post_telemetry(
     )
     if scooter is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Scooter {telemetry.code} not found")
-    return ScooterOut.model_validate(scooter)
+    state = ScooterOut.model_validate(scooter)
+    await hub.broadcast(scooter_updated_event(state))
+    return state
