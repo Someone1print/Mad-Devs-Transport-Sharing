@@ -21,7 +21,7 @@ class Config:
     interval_seconds: float = 1.5  # tick and telemetry period
     speed_kmh: float = 40.0  # exaggerated so movement is visible on the map
     drain_per_km: float = 4.0  # battery percent per kilometre (exaggerated for the demo)
-    recharge_seconds: float = 60.0  # how long a "technician" needs to swap the battery
+    recharge_seconds: float = 180.0  # how long a "technician" needs to swap the battery
     min_ride_battery: int = 20  # idle scooters below this do not start rides
     heartbeat_ticks: int = 20  # idle scooters report every N ticks
 
