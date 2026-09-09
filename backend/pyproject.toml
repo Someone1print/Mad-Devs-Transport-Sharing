@@ -29,6 +29,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+markers = ["db: needs a real PostgreSQL (docker compose up -d db); run unit tests only with -m 'not db'"]
 
 [tool.ruff]
 target-version = "py312"
@@ -40,3 +41,5 @@ select = ["E", "W", "F", "I", "B", "UP", "N", "SIM", "ASYNC", "RUF"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app", "tests"]
+# the local alembic/ directory must not make the alembic package look first-party
+known-third-party = ["alembic"]

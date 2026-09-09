@@ -1,11 +1,11 @@
 import asyncio
 from logging.config import fileConfig
 
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from alembic import context
 from app.core.config import settings
 from app.models import Base
 
@@ -13,8 +13,10 @@ from app.models import Base
 config = context.config
 
 # Database URL comes from the environment (see app.core.config), not from alembic.ini.
+# Tests pass an explicit URL through config.attributes to migrate a separate test database.
 # ConfigParser treats "%" as interpolation, so it must be escaped.
-config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
+database_url: str = config.attributes.get("sqlalchemy_url") or settings.database_url
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 # Set up Python logging from the .ini file.
 if config.config_file_name is not None:

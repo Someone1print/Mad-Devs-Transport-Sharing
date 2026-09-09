@@ -16,6 +16,27 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: scooter
+          POSTGRES_PASSWORD: scooter
+          POSTGRES_DB: scooter
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U scooter -d scooter"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # integration tests create and migrate <POSTGRES_DB>_test on this server
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: scooter
+      POSTGRES_PASSWORD: scooter
+      POSTGRES_DB: scooter
     steps:
       - uses: actions/checkout@v7
 
