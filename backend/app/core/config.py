@@ -1,4 +1,4 @@
-from pydantic import computed_field
+from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     )
 
     debug: bool = False
+
+    # Scooters whose battery is strictly below this percentage become unavailable.
+    low_battery_threshold: int = Field(default=15, ge=0, le=100)
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432
