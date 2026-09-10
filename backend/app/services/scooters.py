@@ -12,8 +12,12 @@ def status_after_telemetry(current: ScooterStatus, battery: int, threshold: int)
 
     A battery strictly below the threshold always makes the scooter unavailable. A scooter that
     was unavailable and now reports a healthy battery becomes available again (there is no
-    separate "reason" for unavailability yet). Reserved and riding scooters keep their status.
+    separate "reason" for unavailability yet). Reserved and riding scooters keep their status
+    while the battery is healthy.
     """
+    # TODO(rides): a scooter that runs low *during a ride* must not just flip to unavailable:
+    # the assignment requires finishing the ride (bill + e-mail to the rider) first. Until the
+    # ride flow exists, telemetry below the threshold overrides reserved/riding as well.
     if battery < threshold:
         return ScooterStatus.UNAVAILABLE
     if current is ScooterStatus.UNAVAILABLE:
