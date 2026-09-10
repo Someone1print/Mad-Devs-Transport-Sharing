@@ -55,6 +55,9 @@ def run(
                     len(payload),
                     config.active_scooters,
                 )
+            elif config.refresh_every_ticks > 0 and ticks % config.refresh_every_ticks == 0:
+                # bookings and recharges happen outside the simulator: re-read the statuses
+                fleet.refresh_statuses(client.fetch_scooters(), now)
 
             for scooter in fleet.tick(config.interval_seconds, now):
                 state = client.send_telemetry(

@@ -24,6 +24,7 @@ class SimScooter:
     target: tuple[float, float] | None = None
     charging_until: float | None = None
     idle_ticks: int = 0
+    parked: bool = False  # reserved or ridden by a real user: never moved by the simulator
 
     @property
     def battery_percent(self) -> int:
@@ -63,10 +64,25 @@ class Fleet:
         scooter = self._by_code.get(code)
         if scooter is None:
             return
-        if status == "unavailable" and scooter.phase is not Phase.CHARGING:
-            scooter.phase = Phase.CHARGING
-            scooter.target = None
-            scooter.charging_until = now + self.config.recharge_seconds
+        if status == "unavailable":
+            scooter.parked = False
+            if scooter.phase is not Phase.CHARGING:
+                scooter.phase = Phase.CHARGING
+                scooter.target = None
+                scooter.charging_until = now + self.config.recharge_seconds
+        elif status in {"reserved", "riding"}:
+            # someone holds the scooter: it stays where it is until the backend frees it
+            scooter.parked = True
+            if scooter.phase is Phase.RIDING:
+                scooter.phase = Phase.IDLE
+                scooter.target = None
+        elif status == "available":
+            scooter.parked = False
+
+    def refresh_statuses(self, payload: list[dict[str, Any]], now: float) -> None:
+        """Apply statuses from a fresh GET /api/scooters; unknown codes are ignored."""
+        for item in payload:
+            self.apply_server_status(str(item.get("code", "")), str(item.get("status", "")), now)
 
     def tick(self, dt: float, now: float) -> list[SimScooter]:
         """Advance the simulation by `dt` seconds; returns scooters that must send telemetry."""
@@ -109,7 +125,9 @@ class Fleet:
         candidates = [
             scooter
             for scooter in self.scooters
-            if scooter.phase is Phase.IDLE and scooter.battery >= self.config.min_ride_battery
+            if scooter.phase is Phase.IDLE
+            and not scooter.parked
+            and scooter.battery >= self.config.min_ride_battery
         ]
         for scooter in self.rng.sample(candidates, min(needed, len(candidates))):
             self.start_ride(scooter, random_point(BISHKEK_BBOX, self.rng), now)
