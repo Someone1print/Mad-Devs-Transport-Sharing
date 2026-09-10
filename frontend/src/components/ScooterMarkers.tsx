@@ -71,6 +71,8 @@ export function ScooterMarkers({ scooters, ...rest }: ScooterMarkersProps) {
             key={scooter.code}
             center={[scooter.lat, scooter.lon]}
             radius={mine ? 11 : 9}
+            // className must be a constructor option: Leaflet only adds it when the path is created
+            className={`scooter scooter-${scooter.code}`}
             pathOptions={{
               color: mine ? '#0f172a' : '#ffffff',
               weight: mine ? 3 : 2,
