@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     # Scooters whose battery is strictly below this percentage become unavailable.
     low_battery_threshold: int = Field(default=15, ge=0, le=100)
 
+    # Bookings: how long a hold lasts, how early the rider is warned, how often the
+    # background sweeper checks expires_at. Tests set these to seconds instead of minutes.
+    booking_ttl_seconds: int = Field(default=900, gt=0)
+    booking_warn_before_seconds: int = Field(default=180, ge=0)
+    booking_sweep_interval_seconds: float = Field(default=2.0, gt=0)
+
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_user: str = "scooter"
