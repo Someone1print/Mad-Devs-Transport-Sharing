@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -40,7 +41,16 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         await engine.dispose()
 
 
+def configure_logging() -> None:
+    """Make application INFO logs (e.g. the booking sweeper) visible next to uvicorn's own."""
+    root = logging.getLogger()
+    if not root.handlers:
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
+    logging.getLogger("app").setLevel(logging.INFO)
+
+
 def create_app() -> FastAPI:
+    configure_logging()
     application = FastAPI(
         title="Transport Sharing API",
         version="0.1.0",
