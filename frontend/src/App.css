@@ -66,6 +66,23 @@
   color: #cbd5e1;
 }
 
+.app__user {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #f8fafc;
+}
+
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #94a3b8;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 .connection {
   padding: 2px 8px;
   border-radius: 999px;
@@ -83,6 +100,41 @@
   color: #fed7aa;
 }
 
+.my-booking {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: #422006;
+  border: 1px solid #f59e0b;
+  color: #fde68a;
+  font-size: 13px;
+}
+
+.my-booking__label {
+  color: #fbbf24;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  font-size: 11px;
+}
+
+.my-booking__timer {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 15px;
+  color: #fff7ed;
+}
+
+.banner {
+  padding: 10px 20px;
+  background: #fef3c7;
+  color: #78350f;
+  border-bottom: 1px solid #f59e0b;
+  font-size: 14px;
+  font-weight: 500;
+}
+
 .app__map {
   flex: 1;
   min-height: 0;
@@ -96,4 +148,137 @@
 .scooter-popup {
   font-size: 13px;
   line-height: 1.5;
+  min-width: 190px;
+}
+
+.popup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.popup-actions__note {
+  color: #475569;
+  font-size: 12px;
+}
+
+.btn {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.btn--primary:not(:disabled):hover {
+  background: #15803d;
+}
+
+.btn--ghost {
+  background: transparent;
+  color: inherit;
+  border-color: currentColor;
+}
+
+.gate {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.55);
+  z-index: 2000;
+}
+
+.gate__card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(360px, calc(100vw - 32px));
+  padding: 24px;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+}
+
+.gate__title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.gate__hint {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+}
+
+.gate__input {
+  font: inherit;
+  font-size: 15px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+}
+
+.gate__error {
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.toast-stack {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 3000;
+  max-width: min(420px, calc(100vw - 32px));
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: #f8fafc;
+  background: #1e293b;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  font-size: 14px;
+}
+
+.toast--success {
+  background: #166534;
+}
+
+.toast--warning {
+  background: #b45309;
+}
+
+.toast--error {
+  background: #991b1b;
+}
+
+.toast__close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
 }

@@ -1,0 +1,26 @@
+import type { Booking } from '../api/types'
+import { formatRemaining, remainingSeconds } from '../booking/bookingState'
+
+interface MyBookingProps {
+  booking: Booking
+  now: number
+  busy: boolean
+  onCancel: () => void
+}
+
+/** Header widget: the rider's current hold with a live countdown and a cancel button. */
+export function MyBooking({ booking, now, busy, onCancel }: MyBookingProps) {
+  const left = remainingSeconds(booking, now)
+  return (
+    <div className="my-booking" data-testid="my-booking">
+      <span className="my-booking__label">Моя бронь</span>
+      <strong>{booking.scooter_code}</strong>
+      <span className="my-booking__timer" aria-label="Осталось времени">
+        {formatRemaining(left)}
+      </span>
+      <button type="button" className="btn btn--ghost" disabled={busy} onClick={onCancel}>
+        Отменить
+      </button>
+    </div>
+  )
+}
