@@ -39,9 +39,12 @@ async def make_booking(
     scooter: Scooter,
     expires_at: datetime,
     scooter_status: ScooterStatus = ScooterStatus.RESERVED,
+    created_at: datetime | None = None,
 ) -> Booking:
     scooter.status = scooter_status
     booking = Booking(user_id=user_id, scooter_id=scooter.id, expires_at=expires_at)
+    if created_at is not None:
+        booking.created_at = created_at
     session.add(booking)
     await session.commit()
     return booking
@@ -98,7 +101,11 @@ async def test_sweep_warns_exactly_once_before_expiry(db_session: AsyncSession) 
     scooter = await make_scooter(db_session)
     now = datetime.now(UTC)
     booking = await make_booking(
-        db_session, user.id, scooter, expires_at=now + timedelta(seconds=100)
+        db_session,
+        user.id,
+        scooter,
+        expires_at=now + timedelta(seconds=100),
+        created_at=now - timedelta(seconds=800),
     )
     hub, owner, bystander = make_hub(user.id)
     booking_id = booking.id
@@ -118,6 +125,32 @@ async def test_sweep_warns_exactly_once_before_expiry(db_session: AsyncSession) 
     db_session.expire_all()
     stored = await db_session.get(Booking, booking_id)
     assert stored is not None and stored.warned_at == now and stored.status is BookingStatus.ACTIVE
+
+
+async def test_short_booking_is_warned_at_half_its_length_not_immediately(
+    db_session: AsyncSession,
+) -> None:
+    """A 60 s booking must not trigger the "3 minutes left" warning the moment it is created."""
+    user = await make_user(db_session)
+    scooter = await make_scooter(db_session)
+    now = datetime.now(UTC)
+    booking = await make_booking(
+        db_session, user.id, scooter, expires_at=now + timedelta(seconds=60), created_at=now
+    )
+    hub, owner, _ = make_hub(user.id)
+    booking_id = booking.id
+
+    at_creation = await sweep_bookings(db_session, hub, now=now, warn_before=WARN_BEFORE)
+    just_before_half = await sweep_bookings(
+        db_session, hub, now=now + timedelta(seconds=29), warn_before=WARN_BEFORE
+    )
+    past_half = await sweep_bookings(
+        db_session, hub, now=now + timedelta(seconds=31), warn_before=WARN_BEFORE
+    )
+
+    assert at_creation.warned == [] and just_before_half.warned == []
+    assert [b.id for b in past_half.warned] == [booking_id]
+    assert owner.of_type("booking.expiring")[0]["seconds_left"] == 29
 
 
 async def test_sweep_does_not_warn_too_early(db_session: AsyncSession) -> None:
@@ -144,7 +177,11 @@ async def test_sweep_catches_up_after_a_restart(db_session: AsyncSession) -> Non
         db_session, user_a.id, overdue_scooter, expires_at=now - timedelta(minutes=5)
     )
     soon = await make_booking(
-        db_session, user_b.id, soon_scooter, expires_at=now + timedelta(seconds=60)
+        db_session,
+        user_b.id,
+        soon_scooter,
+        expires_at=now + timedelta(seconds=60),
+        created_at=now - timedelta(seconds=840),
     )
     hub = ScooterHub()
 

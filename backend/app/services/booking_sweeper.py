@@ -12,7 +12,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Booking, BookingStatus, Scooter, ScooterStatus
@@ -63,16 +63,20 @@ async def _warn_expiring(
 ) -> list[Booking]:
     """Stamp `warned_at` atomically and return only the bookings this call claimed.
 
-    `WHERE warned_at IS NULL` makes the notification exactly-once across iterations, restarts
-    and even several sweeper processes: each row can be claimed by one UPDATE only.
+    The warning goes out when less than `warn_before` remains, but never earlier than half of
+    the booking's own length: a 60-second booking is warned at 30 seconds left, not the moment
+    it is created. `WHERE warned_at IS NULL` makes the notification exactly-once across
+    iterations, restarts and even several sweeper processes: each row can be claimed by one
+    UPDATE only.
     """
+    window = func.least(warn_before, (Booking.expires_at - Booking.created_at) / 2)
     claimed = (
         update(Booking)
         .where(
             Booking.status == BookingStatus.ACTIVE,
             Booking.warned_at.is_(None),
             Booking.expires_at > now,
-            Booking.expires_at <= now + warn_before,
+            Booking.expires_at - now <= window,
         )
         .values(warned_at=now)
         .returning(Booking.id)
