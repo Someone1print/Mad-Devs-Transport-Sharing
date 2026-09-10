@@ -30,6 +30,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-scooter}
       DEBUG: ${DEBUG:-false}
       LOW_BATTERY_THRESHOLD: ${LOW_BATTERY_THRESHOLD:-15}
+      BOOKING_TTL_SECONDS: ${BOOKING_TTL_SECONDS:-900}
+      BOOKING_WARN_BEFORE_SECONDS: ${BOOKING_WARN_BEFORE_SECONDS:-180}
+      BOOKING_SWEEP_INTERVAL_SECONDS: ${BOOKING_SWEEP_INTERVAL_SECONDS:-2}
     # Apply migrations (verifies the DB connection), seed the demo fleet, then serve the API
     command: sh -c "alembic upgrade head && python -m app.seed && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
