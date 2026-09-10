@@ -16,6 +16,10 @@ from app.main import app
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
+# The application-level sweeper loop would run against the dev database from inside the
+# TestClient lifespan; tests call the sweeper explicitly on the test database instead.
+settings.booking_sweeper_enabled = False
+
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     """Every test that touches the test database gets the `db` marker automatically."""

@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     booking_ttl_seconds: int = Field(default=900, gt=0)
     booking_warn_before_seconds: int = Field(default=180, ge=0)
     booking_sweep_interval_seconds: float = Field(default=2.0, gt=0)
+    # tests drive the sweeper explicitly; the app-level loop is switched off there
+    booking_sweeper_enabled: bool = True
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432
