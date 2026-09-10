@@ -20,8 +20,22 @@ class ScooterNotFoundError(BookingError):
     status_code = 404
 
 
+class BookingNotFoundError(BookingError):
+    status_code = 404
+
+
+class BookingForbiddenError(BookingError):
+    status_code = 403
+
+
 class BookingConflictError(BookingError):
     status_code = 409
+
+
+async def get_active_booking(session: AsyncSession, user_id: int) -> Booking | None:
+    return await session.scalar(
+        select(Booking).where(Booking.user_id == user_id, Booking.status == BookingStatus.ACTIVE)
+    )
 
 
 async def create_booking(
@@ -65,5 +79,35 @@ async def create_booking(
         raise BookingConflictError(
             "scooter_not_available", f"Scooter {scooter_code} was just booked by someone else"
         ) from exc
+    await session.refresh(booking)
+    return booking
+
+
+async def cancel_booking(
+    session: AsyncSession, user_id: int, booking_id: int, now: datetime
+) -> Booking:
+    """Cancel the caller's active booking and free the scooter.
+
+    The booking row is locked so that a concurrent sweeper iteration cannot expire it at the
+    same moment; the scooter goes back to `available` only if it is still `reserved`.
+    """
+    booking = await session.scalar(
+        select(Booking).where(Booking.id == booking_id).with_for_update(of=Booking)
+    )
+    if booking is None:
+        raise BookingNotFoundError("booking_not_found", f"Booking {booking_id} not found")
+    if booking.user_id != user_id:
+        raise BookingForbiddenError("not_your_booking", "This booking belongs to another user")
+    if booking.status is not BookingStatus.ACTIVE:
+        raise BookingConflictError("booking_not_active", "This booking is no longer active")
+
+    scooter = await session.scalar(
+        select(Scooter).where(Scooter.id == booking.scooter_id).with_for_update()
+    )
+    booking.status = BookingStatus.CANCELLED
+    booking.ended_at = now
+    if scooter is not None and scooter.status is ScooterStatus.RESERVED:
+        scooter.status = ScooterStatus.AVAILABLE
+    await session.commit()
     await session.refresh(booking)
     return booking
