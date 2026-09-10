@@ -1,5 +1,5 @@
 import { usePublicConfig } from './api/config'
-import { formatRemaining, remainingSeconds } from './booking/bookingState'
+import { formatRemaining, remainingSeconds, warningWindowSeconds } from './booking/bookingState'
 import { useBooking } from './booking/useBooking'
 import { CityMap } from './components/CityMap'
 import { MyBooking } from './components/MyBooking'
@@ -36,7 +36,9 @@ function App() {
   const available = list.filter((scooter) => scooter.status === 'available').length
   const left = booking.active ? remainingSeconds(booking.active, now) : null
   const expiringSoon =
-    booking.active !== null && left !== null && left <= config.booking_warn_before_seconds
+    booking.active !== null &&
+    left !== null &&
+    left <= warningWindowSeconds(booking.active, config.booking_warn_before_seconds)
 
   return (
     <div className="app">

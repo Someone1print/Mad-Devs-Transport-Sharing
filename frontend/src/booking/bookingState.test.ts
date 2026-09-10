@@ -6,6 +6,7 @@ import {
   bookingErrorMessage,
   formatRemaining,
   remainingSeconds,
+  warningWindowSeconds,
 } from './bookingState'
 
 function booking(overrides: Partial<Booking> = {}): Booking {
@@ -70,6 +71,19 @@ describe('countdown helpers', () => {
     expect(formatRemaining(270)).toBe('04:30')
     expect(formatRemaining(5)).toBe('00:05')
     expect(formatRemaining(0)).toBe('00:00')
+  })
+})
+
+describe('warningWindowSeconds', () => {
+  it('uses the configured window for a normal booking', () => {
+    expect(warningWindowSeconds(booking(), 180)).toBe(180) // 15-minute booking
+  })
+
+  it('never warns earlier than half of a short booking', () => {
+    const short = booking({ expires_at: '2026-09-10T10:01:00Z' }) // 60 s long
+
+    expect(warningWindowSeconds(short, 180)).toBe(30)
+    expect(warningWindowSeconds(short, 20)).toBe(20)
   })
 })
 

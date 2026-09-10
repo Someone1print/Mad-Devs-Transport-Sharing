@@ -18,6 +18,15 @@ export function remainingSeconds(booking: Booking, now: number): number {
   return Math.max(0, Math.ceil((Date.parse(booking.expires_at) - now) / 1000))
 }
 
+/**
+ * Seconds before expiry at which the "expiring soon" warning applies. Mirrors the backend:
+ * the configured window, but never earlier than half of the booking's own length.
+ */
+export function warningWindowSeconds(booking: Booking, warnBeforeSeconds: number): number {
+  const length = (Date.parse(booking.expires_at) - Date.parse(booking.created_at)) / 1000
+  return Math.min(warnBeforeSeconds, Math.floor(length / 2))
+}
+
 export function formatRemaining(seconds: number): string {
   const minutes = Math.floor(seconds / 60)
   const rest = seconds % 60
