@@ -8,7 +8,7 @@ from alembic import command
 from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import make_url, text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
 from app.db.session import get_db
@@ -16,11 +16,16 @@ from app.main import app
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
+# The application-level sweeper loop would run against the dev database from inside the
+# TestClient lifespan; tests call the sweeper explicitly on the test database instead.
+settings.booking_sweeper_enabled = False
+
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     """Every test that touches the test database gets the `db` marker automatically."""
     for item in items:
-        if "db_session" in getattr(item, "fixturenames", ()):
+        fixtures = getattr(item, "fixturenames", ())
+        if "db_session" in fixtures or "committed_db" in fixtures:
             item.add_marker(pytest.mark.db)
 
 
@@ -96,3 +101,28 @@ async def db_session(test_database_url: str) -> AsyncIterator[AsyncSession]:
             await session.close()
             await transaction.rollback()
     await engine.dispose()
+
+
+@pytest.fixture
+async def committed_db(test_database_url: str) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Real sessions with real commits, one per request: needed to test row locks and races.
+
+    Unlike `db_session` nothing is rolled back, so the tables are truncated afterwards.
+    """
+    engine = create_async_engine(test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def override_get_db() -> AsyncIterator[AsyncSession]:
+        async with factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        yield factory
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+        async with engine.begin() as connection:
+            await connection.execute(
+                text("TRUNCATE TABLE bookings, users, scooters RESTART IDENTITY CASCADE")
+            )
+        await engine.dispose()

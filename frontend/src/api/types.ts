@@ -11,9 +11,63 @@ export interface Scooter {
   updated_at: string
 }
 
+export interface User {
+  id: number
+  name: string
+  created_at: string
+}
+
+export type BookingStatus = 'active' | 'cancelled' | 'expired'
+
+export interface Booking {
+  id: number
+  scooter_code: string
+  user_id: number
+  status: BookingStatus
+  created_at: string
+  expires_at: string
+}
+
+export interface PublicConfig {
+  booking_ttl_seconds: number
+  booking_warn_before_seconds: number
+  low_battery_threshold: number
+}
+
 export interface ScooterUpdatedEvent {
   type: 'scooter.updated'
   scooter: Scooter
 }
 
-export type RealtimeEvent = ScooterUpdatedEvent
+export interface BookingCreatedEvent {
+  type: 'booking.created'
+  booking: Booking
+}
+
+export interface BookingCancelledEvent {
+  type: 'booking.cancelled'
+  booking: Booking
+}
+
+export interface BookingExpiringEvent {
+  type: 'booking.expiring'
+  booking: Booking
+  seconds_left: number
+}
+
+export interface BookingExpiredEvent {
+  type: 'booking.expired'
+  booking: Booking
+}
+
+export type BookingEvent =
+  | BookingCreatedEvent
+  | BookingCancelledEvent
+  | BookingExpiringEvent
+  | BookingExpiredEvent
+
+export type RealtimeEvent = ScooterUpdatedEvent | BookingEvent
+
+export function isBookingEvent(event: RealtimeEvent): event is BookingEvent {
+  return event.type.startsWith('booking.')
+}
