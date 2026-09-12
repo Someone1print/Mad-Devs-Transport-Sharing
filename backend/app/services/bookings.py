@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Booking, BookingStatus, Scooter, ScooterStatus, User
+from app.models import Booking, BookingStatus, Ride, RideStatus, Scooter, ScooterStatus, User
 
 
 class BookingError(Exception):
@@ -64,6 +64,11 @@ async def create_booking(
     )
     if active is not None:
         raise BookingConflictError("user_has_active_booking", "You already have an active booking")
+    riding = await session.scalar(
+        select(Ride.id).where(Ride.user_id == user_id, Ride.status != RideStatus.FINISHED)
+    )
+    if riding is not None:
+        raise BookingConflictError("user_has_active_ride", "Finish your current ride first")
 
     booking = Booking(user_id=user_id, scooter_id=scooter.id, expires_at=now + ttl)
     scooter.status = ScooterStatus.RESERVED
