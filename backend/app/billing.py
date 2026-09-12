@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal
 
+CURRENCY = "KGS"  # Kyrgyz som
 KOPECK = Decimal("0.01")
 SECONDS_PER_MINUTE = Decimal(60)
 ZERO = Decimal("0.00")

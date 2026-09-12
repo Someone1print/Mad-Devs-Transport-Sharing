@@ -22,7 +22,7 @@ from tests.test_bookings import make_scooter, make_user
 
 T0 = datetime(2026, 9, 12, 10, 0, 0, tzinfo=UTC)
 TARIFF = Tariff(ride_rate_per_minute=Decimal("5.00"), pause_rate_per_minute=Decimal("1.50"))
-ZONE = list(BISHKEK_CENTER_ZONE.points)
+ZONES = [list(BISHKEK_CENTER_ZONE.points)]
 INSIDE = (42.8756, 74.6036)  # Ala-Too Square
 OUTSIDE = (42.8500, 74.6000)  # south of the railway
 THRESHOLD = 15
@@ -212,7 +212,7 @@ async def test_finish_inside_zone_bills_segments_and_frees_scooter(
         db_session,
         user_id,
         ride_id,
-        ZONE,
+        ZONES,
         THRESHOLD,
         at(213),  # ride 1 s → 0.08
     )
@@ -238,7 +238,7 @@ async def test_finish_outside_zone_is_refused_and_ride_goes_on(db_session: Async
     ride_id = ride.id
 
     with pytest.raises(RideConflictError) as exc:
-        await ride_service.finish_ride(db_session, user_id, ride_id, ZONE, THRESHOLD, at(120))
+        await ride_service.finish_ride(db_session, user_id, ride_id, ZONES, THRESHOLD, at(120))
 
     assert exc.value.code == "outside_service_zone"
     db_session.expire_all()
@@ -257,7 +257,7 @@ async def test_finish_while_paused_bills_the_open_pause(db_session: AsyncSession
     await ride_service.pause_ride(db_session, user_id, ride_id, at(60))
 
     finished, _ = await ride_service.finish_ride(
-        db_session, user_id, ride_id, ZONE, THRESHOLD, at(120)
+        db_session, user_id, ride_id, ZONES, THRESHOLD, at(120)
     )
 
     assert finished.pause_seconds == 60 and finished.pause_cost == Decimal("1.50")
@@ -269,10 +269,12 @@ async def test_double_finish_returns_the_same_receipt(db_session: AsyncSession) 
     await place(db_session, scooter_id, INSIDE)
     ride, _ = await ride_service.start_ride(db_session, user_id, booking_id, TARIFF, at(0))
     ride_id = ride.id
-    first, _ = await ride_service.finish_ride(db_session, user_id, ride_id, ZONE, THRESHOLD, at(90))
+    first, _ = await ride_service.finish_ride(
+        db_session, user_id, ride_id, ZONES, THRESHOLD, at(90)
+    )
 
     again, done_now = await ride_service.finish_ride(
-        db_session, user_id, ride_id, ZONE, THRESHOLD, at(500)
+        db_session, user_id, ride_id, ZONES, THRESHOLD, at(500)
     )
 
     assert done_now is False
@@ -286,7 +288,7 @@ async def test_pause_and_resume_on_a_finished_ride_are_refused(db_session: Async
     await place(db_session, scooter_id, INSIDE)
     ride, _ = await ride_service.start_ride(db_session, user_id, booking_id, TARIFF, at(0))
     ride_id = ride.id
-    await ride_service.finish_ride(db_session, user_id, ride_id, ZONE, THRESHOLD, at(60))
+    await ride_service.finish_ride(db_session, user_id, ride_id, ZONES, THRESHOLD, at(60))
 
     for action in (ride_service.pause_ride, ride_service.resume_ride):
         with pytest.raises(RideConflictError) as exc:
@@ -303,7 +305,7 @@ async def test_finish_keeps_a_flat_scooter_unavailable(db_session: AsyncSession)
     scooter.battery = 10  # drained during the ride
     await db_session.commit()
 
-    await ride_service.finish_ride(db_session, user_id, ride.id, ZONE, THRESHOLD, at(60))
+    await ride_service.finish_ride(db_session, user_id, ride.id, ZONES, THRESHOLD, at(60))
 
     db_session.expire_all()
     scooter = await db_session.get(Scooter, scooter_id)

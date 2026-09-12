@@ -22,7 +22,8 @@ async def test_list_scooters_returns_every_scooter_ordered_by_code(
     assert [s["code"] for s in body] == ["KG-A", "KG-B"]
     assert body[0]["status"] == "unavailable"
     assert body[0]["battery"] == 9
-    assert set(body[1]) == {"code", "lat", "lon", "battery", "status", "updated_at"}
+    assert set(body[1]) == {"code", "lat", "lon", "battery", "status", "paused", "updated_at"}
+    assert body[1]["paused"] is False
 
 
 async def test_list_scooters_is_empty_without_data(

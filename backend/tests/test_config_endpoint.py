@@ -11,4 +11,7 @@ async def test_public_config_exposes_booking_timings(client: AsyncClient) -> Non
         "booking_ttl_seconds": settings.booking_ttl_seconds,
         "booking_warn_before_seconds": settings.booking_warn_before_seconds,
         "low_battery_threshold": settings.low_battery_threshold,
+        "ride_rate_per_minute": str(settings.ride_rate_per_minute),
+        "pause_rate_per_minute": str(settings.pause_rate_per_minute),
+        "currency": "KGS",
     }

@@ -2,8 +2,19 @@ import enum
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, Numeric, func, text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import (
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    exists,
+    func,
+    select,
+    text,
+)
+from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 
 from app.billing import SegmentKind
 from app.db.base import Base
@@ -97,3 +108,13 @@ class RideSegment(Base):
     cost: Mapped[Decimal | None] = mapped_column(MONEY)
 
     ride: Mapped[Ride] = relationship(back_populates="segments")
+
+
+# Derived flag loaded with every Scooter: is there a paused ride on it right now?
+# Declared here because it needs the Ride mapping, which itself imports Scooter.
+Scooter.paused = column_property(
+    select(exists().where(Ride.scooter_id == Scooter.id, Ride.status == RideStatus.PAUSED))
+    .correlate_except(Ride)
+    .scalar_subquery(),
+    deferred=False,
+)

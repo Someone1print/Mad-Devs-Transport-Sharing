@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
@@ -29,6 +31,10 @@ class Settings(BaseSettings):
     booking_sweep_interval_seconds: float = Field(default=2.0, gt=0)
     # tests drive the sweeper explicitly; the app-level loop is switched off there
     booking_sweeper_enabled: bool = True
+
+    # Ride tariffs per minute, in som. Decimal end to end: never a float.
+    ride_rate_per_minute: Decimal = Field(default=Decimal("5.00"), ge=0, decimal_places=2)
+    pause_rate_per_minute: Decimal = Field(default=Decimal("1.50"), ge=0, decimal_places=2)
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432

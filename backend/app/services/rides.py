@@ -193,20 +193,21 @@ async def finish_ride(
     session: AsyncSession,
     user_id: int,
     ride_id: int,
-    zone: Sequence[Point],
+    zones: Sequence[Sequence[Point]],
     low_battery_threshold: int,
     now: datetime,
 ) -> tuple[Ride, bool]:
     """Close the open segment, bill the ride and free the scooter. Returns (ride, finished_now).
 
-    The scooter's own position (last telemetry) must be inside the service zone; the client
+    The scooter's own position (last telemetry) must be inside a service zone; the client
     cannot fake it. A ride that is already finished is returned unchanged with finished_now=False.
     """
     ride = await _locked_ride(session, user_id, ride_id)
     if ride.status is RideStatus.FINISHED:
         return ride, False
     scooter = await _locked_scooter(session, ride.scooter_id)
-    if not point_in_polygon(Point(scooter.lat, scooter.lon), zone):
+    position = Point(scooter.lat, scooter.lon)
+    if not any(point_in_polygon(position, zone) for zone in zones):
         raise RideConflictError(
             "outside_service_zone",
             "Вы вне зоны обслуживания, вернитесь в зону, чтобы завершить поездку",
