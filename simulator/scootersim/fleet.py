@@ -7,6 +7,7 @@ from typing import Any
 from scootersim.config import Config
 from scootersim.geo import (
     BISHKEK_BBOX,
+    DEEP_CORE_SHARE,
     RIDE_BBOX,
     haversine_km,
     inner_box,
@@ -78,8 +79,9 @@ class Fleet:
         position = (scooter.lat, scooter.lon)
         if scooter.legs % 2 == 1:
             return random_edge_point(RIDE_BBOX, self.rng, near=position)
-        # back into the core by the shortest way, so the ride hovers around the boundary
-        return random_point_near(inner_box(RIDE_BBOX), self.rng, near=position)
+        # back well inside the zone by the shortest way (the deep core lies inside the zone
+        # with a margin, so the ride does not hover on the boundary)
+        return random_point_near(inner_box(RIDE_BBOX, DEEP_CORE_SHARE), self.rng, near=position)
 
     def _stop(self, scooter: SimScooter) -> None:
         if scooter.phase is Phase.RIDING:

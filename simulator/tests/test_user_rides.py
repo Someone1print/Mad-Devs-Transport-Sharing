@@ -3,7 +3,15 @@
 import random
 
 from scootersim.fleet import Fleet, Phase, SimScooter
-from scootersim.geo import BISHKEK_BBOX, RIDE_BBOX, haversine_km, in_bbox, in_edge_band, inner_box
+from scootersim.geo import (
+    BISHKEK_BBOX,
+    DEEP_CORE_SHARE,
+    RIDE_BBOX,
+    haversine_km,
+    in_bbox,
+    in_edge_band,
+    inner_box,
+)
 from tests.test_fleet import make_config
 
 
@@ -66,7 +74,8 @@ def test_user_ride_targets_alternate_between_the_edge_and_the_core() -> None:
         targets.append(scooter.target)
 
     assert [in_edge_band(t, RIDE_BBOX) for t in targets] == [True, False, True, False]
-    assert [in_bbox(t, inner_box(RIDE_BBOX)) for t in targets] == [False, True, False, True]
+    deep = inner_box(RIDE_BBOX, DEEP_CORE_SHARE)
+    assert [in_bbox(t, deep) for t in targets] == [False, True, False, True]
 
 
 def test_paused_user_ride_stands_still() -> None:
@@ -151,3 +160,39 @@ def test_held_scooters_report_often_so_status_changes_are_seen_quickly() -> None
     reports = [[s.code for s in fleet.tick(dt=1.0, now=float(t))] for t in range(1, 5)]
 
     assert reports == [[], ["KG-1", "KG-2"], [], ["KG-1", "KG-2"]]
+
+
+def test_deep_core_lies_inside_the_service_zone_with_a_margin() -> None:
+    """The backend's zone polygon (backend/app/zones.py) must contain the deep core, or return
+    legs would not bring the ride back inside. Checked with the same even-odd rule."""
+    zone = [
+        (42.8880, 74.5900),
+        (42.8885, 74.6060),
+        (42.8860, 74.6200),
+        (42.8790, 74.6225),
+        (42.8700, 74.6215),
+        (42.8630, 74.6120),
+        (42.8615, 74.5950),
+        (42.8640, 74.5800),
+        (42.8730, 74.5775),
+        (42.8830, 74.5790),
+    ]
+
+    def inside(lat: float, lon: float) -> bool:
+        inn = False
+        for i, (a_lat, a_lon) in enumerate(zone):
+            b_lat, b_lon = zone[(i + 1) % len(zone)]
+            if (a_lon > lon) != (b_lon > lon):
+                edge_lat = a_lat + (lon - a_lon) * (b_lat - a_lat) / (b_lon - a_lon)
+                if lat < edge_lat:
+                    inn = not inn
+        return inn
+
+    deep = inner_box(RIDE_BBOX, DEEP_CORE_SHARE)
+    corners = [
+        (deep.min_lat, deep.min_lon),
+        (deep.min_lat, deep.max_lon),
+        (deep.max_lat, deep.min_lon),
+        (deep.max_lat, deep.max_lon),
+    ]
+    assert all(inside(lat, lon) for lat, lon in corners)

@@ -68,12 +68,15 @@ def in_bbox(point: tuple[float, float], bbox: BBox) -> bool:
 
 # Share of the box (per side) that counts as its edge; the rest is the core.
 EDGE_SHARE = 0.15
+# Return legs of user rides aim deeper: the central part that lies well inside the service
+# zone (about half a kilometre of margin), so the ride stays inside for a while.
+DEEP_CORE_SHARE = 0.30
 
 
-def inner_box(bbox: BBox) -> BBox:
-    """The central part of the box, away from its edges."""
-    d_lat = (bbox.max_lat - bbox.min_lat) * EDGE_SHARE
-    d_lon = (bbox.max_lon - bbox.min_lon) * EDGE_SHARE
+def inner_box(bbox: BBox, share: float = EDGE_SHARE) -> BBox:
+    """The central part of the box, `share` of each dimension away from every side."""
+    d_lat = (bbox.max_lat - bbox.min_lat) * share
+    d_lon = (bbox.max_lon - bbox.min_lon) * share
     return BBox(
         bbox.min_lat + d_lat, bbox.max_lat - d_lat, bbox.min_lon + d_lon, bbox.max_lon - d_lon
     )
