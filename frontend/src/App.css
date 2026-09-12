@@ -463,3 +463,210 @@
   font-weight: 700;
   font-size: 16px;
 }
+
+.btn--small {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
+.modal--right {
+  justify-content: flex-end;
+  align-items: stretch;
+}
+
+.account {
+  display: flex;
+  flex-direction: column;
+  width: min(480px, 100vw);
+  height: 100%;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.35);
+  overflow-y: auto;
+}
+
+.account__header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 16px 20px 8px;
+}
+
+.account__title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.tabs__tab {
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  color: #475569;
+  cursor: pointer;
+}
+
+.tabs__tab--active {
+  color: #0f172a;
+  border-bottom-color: #2563eb;
+  font-weight: 600;
+}
+
+.account__section {
+  padding: 12px 20px 20px;
+}
+
+.account__heading {
+  margin: 12px 0 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #64748b;
+}
+
+.account__empty {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.history,
+.mail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.history__item,
+.mail__item {
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.history__item--current {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.history__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.history__meta {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.history__estimate {
+  margin-top: 6px;
+  color: #1e3a8a;
+}
+
+.history__receipt {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+  margin: 8px 0 0;
+}
+
+.history__receipt div {
+  display: flex;
+  justify-content: space-between;
+}
+
+.history__receipt dt {
+  color: #64748b;
+}
+
+.history__receipt dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.history__total {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid #e2e8f0;
+  font-weight: 700;
+}
+
+.mail__to {
+  color: #64748b;
+  font-size: 12px;
+  margin: 2px 0 6px;
+}
+
+.mail__body {
+  margin: 0;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border-radius: 8px;
+  font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.account__top {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.account__top .tabs {
+  border-bottom: none;
+}
+
+.account__who {
+  flex: 1;
+  color: #64748b;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  margin: -8px -10px -8px 0;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: #0f172a;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.account__close:hover,
+.account__close:focus-visible {
+  background: #f1f5f9;
+}
+
+.account:focus {
+  outline: none;
+}
+
+.account__error .link {
+  color: #2563eb;
+}

@@ -5,6 +5,7 @@ import {
   isBookingEvent,
   isRideEvent,
   type BookingEvent,
+  type Email,
   type RealtimeEvent,
   type RideEvent,
 } from '../api/types'
@@ -22,6 +23,7 @@ interface FeedOptions {
   userId: number | null
   onBookingEvent?: (event: BookingEvent) => void
   onRideEvent?: (event: RideEvent) => void
+  onEmail?: (email: Email) => void
   /** Called after every reconnect (not the first connection): personal state may be stale. */
   onReconnect?: () => void
 }
@@ -40,20 +42,22 @@ function identify(socket: WebSocket | null, userId: number | null): void {
  * Reconnects with exponential backoff and reloads the list after every reconnect.
  */
 export function useScooterFeed(options: FeedOptions): ScooterFeed {
-  const { userId, onBookingEvent, onRideEvent, onReconnect } = options
+  const { userId, onBookingEvent, onRideEvent, onEmail, onReconnect } = options
   const [scooters, setScooters] = useState<ScooterStore>(emptyStore)
   const [connection, setConnection] = useState<ConnectionState>('connecting')
   const socketRef = useRef<WebSocket | null>(null)
   const userIdRef = useRef(userId)
   const onBookingEventRef = useRef(onBookingEvent)
   const onRideEventRef = useRef(onRideEvent)
+  const onEmailRef = useRef(onEmail)
   const onReconnectRef = useRef(onReconnect)
   useEffect(() => {
     userIdRef.current = userId
     onBookingEventRef.current = onBookingEvent
     onRideEventRef.current = onRideEvent
+    onEmailRef.current = onEmail
     onReconnectRef.current = onReconnect
-  }, [userId, onBookingEvent, onRideEvent, onReconnect])
+  }, [userId, onBookingEvent, onRideEvent, onEmail, onReconnect])
 
   useEffect(() => {
     let disposed = false
@@ -93,6 +97,8 @@ export function useScooterFeed(options: FeedOptions): ScooterFeed {
           onBookingEventRef.current?.(event)
         } else if (isRideEvent(event)) {
           onRideEventRef.current?.(event)
+        } else if (event.type === 'email.sent') {
+          onEmailRef.current?.(event.email)
         }
       }
       socket.onerror = () => socket.close()

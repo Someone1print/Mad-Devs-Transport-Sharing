@@ -1,6 +1,7 @@
 import asyncio
 import os
 from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -122,6 +123,24 @@ async def committed_db(test_database_url: str) -> AsyncIterator[async_sessionmak
     finally:
         app.dependency_overrides.pop(get_db, None)
         async with engine.begin() as connection:
-            tables = "ride_segments, rides, bookings, users, scooters, service_zones"
+            tables = "emails, ride_segments, rides, bookings, users, scooters, service_zones"
             await connection.execute(text(f"TRUNCATE TABLE {tables} RESTART IDENTITY CASCADE"))
         await engine.dispose()
+
+
+API_T0 = datetime(2026, 9, 12, 12, 0, 0, tzinfo=UTC)
+
+
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch):
+    """Controllable time for the API: `clock.set(seconds)` moves "now" to API_T0 + seconds."""
+
+    class Clock:
+        current = API_T0
+
+        def set(self, seconds: int) -> None:
+            self.current = API_T0 + timedelta(seconds=seconds)
+
+    instance = Clock()
+    monkeypatch.setattr("app.core.clock.now", lambda: instance.current)
+    return instance

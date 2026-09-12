@@ -9,11 +9,13 @@ from app.api.deps import CurrentUser, api_error
 from app.core import clock
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Ride, ServiceZone
-from app.realtime.hub import hub, ride_event, scooter_updated_event
+from app.models import Email, Ride, ServiceZone
+from app.realtime.hub import email_event, hub, ride_event, scooter_updated_event
+from app.schemas.email import EmailOut
 from app.schemas.ride import RideOut, RideStart
 from app.schemas.scooter import ScooterOut
 from app.services import rides as ride_service
+from app.services.receipts import receipt_dedup_key
 from app.services.rides import RideError, Tariff
 
 router = APIRouter()
@@ -63,6 +65,12 @@ async def start_ride(
     return await publish_ride_change(ride, "ride.started")
 
 
+@router.get("/rides", summary="The caller's finished rides, newest first")
+async def list_rides(user: CurrentUser, session: DbSession) -> list[RideOut]:
+    rides = await ride_service.list_finished_rides(session, user.id)
+    return [RideOut.from_ride(ride) for ride in rides]
+
+
 @router.get("/rides/active", summary="The caller's ride in progress, if any")
 async def get_active_ride(user: CurrentUser, session: DbSession) -> RideOut | None:
     ride = await ride_service.get_active_ride(session, user.id)
@@ -102,4 +110,8 @@ async def finish_ride(ride_id: int, user: CurrentUser, session: DbSession) -> Ri
         raise http_error(exc) from exc
     if not finished_now:
         return RideOut.from_ride(ride)
-    return await publish_ride_change(ride, "ride.finished")
+    out = await publish_ride_change(ride, "ride.finished")
+    email = await session.scalar(select(Email).where(Email.dedup_key == receipt_dedup_key(ride)))
+    if email is not None:
+        await hub.send_to_user(ride.user_id, email_event(EmailOut.model_validate(email)))
+    return out

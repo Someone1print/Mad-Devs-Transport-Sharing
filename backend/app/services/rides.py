@@ -26,6 +26,7 @@ from app.models import (
     ScooterStatus,
     User,
 )
+from app.services.receipts import send_receipt
 from app.services.scooters import release_status
 
 UNFINISHED = (RideStatus.ACTIVE, RideStatus.PAUSED)
@@ -56,6 +57,21 @@ class RideForbiddenError(RideError):
 
 class RideConflictError(RideError):
     status_code = 409
+
+
+async def list_finished_rides(session: AsyncSession, user_id: int) -> Sequence[Ride]:
+    """The rider's history: finished rides, newest first, with their stored receipts."""
+    return (
+        (
+            await session.scalars(
+                select(Ride)
+                .where(Ride.user_id == user_id, Ride.status == RideStatus.FINISHED)
+                .order_by(Ride.finished_at.desc(), Ride.id.desc())
+            )
+        )
+        .unique()
+        .all()
+    )
 
 
 async def get_active_ride(session: AsyncSession, user_id: int) -> Ride | None:
@@ -261,5 +277,9 @@ async def finish_ride(
     ride.status = RideStatus.FINISHED
     scooter.status = release_status(scooter.battery, low_battery_threshold)
     scooter.paused = False
+    # the receipt e-mail is part of the same transaction: receipt and mail, or neither;
+    # its dedup key (the ride id) keeps concurrent finishes at exactly one message
+    await session.flush()
+    await send_receipt(session, ride.user, ride)
     await session.commit()
     return await _reload(session, ride_id), True
