@@ -3,21 +3,27 @@ import { useCallback, useEffect, useState } from 'react'
 import { fetchRideHistory } from '../api/account'
 import type { Ride } from '../api/types'
 
+export type LoadStatus = 'loading' | 'ready' | 'error'
+
 export interface RideHistory {
   rides: Ride[]
-  loading: boolean
+  status: LoadStatus
   refresh: () => Promise<void>
 }
 
 interface HistoryState {
   userId: number | null
   rides: Ride[]
-  loaded: boolean
+  status: LoadStatus
 }
 
-/** Finished rides with their server receipts; reloaded whenever a ride finishes. */
+/**
+ * Finished rides with their server receipts. `version` is the id of the last ride that finished
+ * (from the socket event or the finish response, whichever comes first), so the list follows
+ * without a manual reload; `refresh` covers a reconnect and the "retry" button.
+ */
 export function useRideHistory(userId: number | null, version: number): RideHistory {
-  const [state, setState] = useState<HistoryState>({ userId: null, rides: [], loaded: false })
+  const [state, setState] = useState<HistoryState>({ userId: null, rides: [], status: 'loading' })
   const current = state.userId === userId ? state : null
 
   const refresh = useCallback(async () => {
@@ -26,13 +32,17 @@ export function useRideHistory(userId: number | null, version: number): RideHist
     }
     try {
       const rides = await fetchRideHistory(userId)
-      setState({ userId, rides, loaded: true })
+      setState({ userId, rides, status: 'ready' })
     } catch (error) {
       console.warn('Could not load the ride history', error)
+      setState((prev) => ({
+        userId,
+        rides: prev.userId === userId ? prev.rides : [],
+        status: 'error',
+      }))
     }
   }, [userId])
 
-  // `version` bumps when a ride finishes, so the history follows without a manual reload
   useEffect(() => {
     if (userId === null) {
       return
@@ -41,10 +51,19 @@ export function useRideHistory(userId: number | null, version: number): RideHist
     fetchRideHistory(userId)
       .then((rides) => {
         if (!cancelled) {
-          setState({ userId, rides, loaded: true })
+          setState({ userId, rides, status: 'ready' })
         }
       })
-      .catch((error: unknown) => console.warn('Could not load the ride history', error))
+      .catch((error: unknown) => {
+        console.warn('Could not load the ride history', error)
+        if (!cancelled) {
+          setState((prev) => ({
+            userId,
+            rides: prev.userId === userId ? prev.rides : [],
+            status: 'error',
+          }))
+        }
+      })
     return () => {
       cancelled = true
     }
@@ -52,7 +71,7 @@ export function useRideHistory(userId: number | null, version: number): RideHist
 
   return {
     rides: current?.rides ?? [],
-    loading: userId !== null && !(current?.loaded ?? false),
+    status: current?.status ?? 'loading',
     refresh,
   }
 }

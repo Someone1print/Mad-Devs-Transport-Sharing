@@ -4,7 +4,7 @@ import { useMailbox } from './account/useMailbox'
 import { useRideHistory } from './account/useRideHistory'
 
 import { usePublicConfig } from './api/config'
-import type { RideEvent } from './api/types'
+import type { Ride, RideEvent } from './api/types'
 import { formatRemaining, remainingSeconds, warningWindowSeconds } from './booking/bookingState'
 import { useBooking } from './booking/useBooking'
 import { AccountPanel, type AccountTab } from './components/AccountPanel'
@@ -40,10 +40,13 @@ function App() {
   const userId = user?.id ?? null
   const { toasts, notify, dismiss } = useToasts()
   const booking = useBooking({ userId, notify })
-  const ride = useRide({ userId, notify })
+  // the last ride that finished, from the finish response or the socket event — whichever is
+  // first; both carry the same id, so the history reloads once
+  const [lastFinishedId, setLastFinishedId] = useState(0)
+  const onFinished = useCallback((finished: Ride) => setLastFinishedId(finished.id), [])
+  const ride = useRide({ userId, notify, onFinished })
   const mailbox = useMailbox(userId)
-  const [finishedCount, setFinishedCount] = useState(0)
-  const history = useRideHistory(userId, finishedCount)
+  const history = useRideHistory(userId, lastFinishedId)
   const [account, setAccount] = useState<AccountTab | null>(null)
   const clearBooking = booking.clear
   const handleRideEvent = ride.handleEvent
@@ -54,21 +57,23 @@ function App() {
         clearBooking() // the booking was converted into this ride
       }
       if (event.type === 'ride.finished') {
-        setFinishedCount((n) => n + 1) // the history has a new entry
+        onFinished(event.ride) // the history has a new entry
       }
     },
-    [handleRideEvent, clearBooking],
+    [handleRideEvent, clearBooking, onFinished],
   )
   const onEmail = mailbox.handleEvent
   const refreshRide = ride.refresh
   const refreshBooking = booking.refresh
   const refreshMail = mailbox.refresh
+  const refreshHistory = history.refresh
   const onReconnect = useCallback(() => {
     // events sent while the socket was down are gone: reload the personal state
     void refreshRide()
     void refreshBooking()
     void refreshMail()
-  }, [refreshRide, refreshBooking, refreshMail])
+    void refreshHistory()
+  }, [refreshRide, refreshBooking, refreshMail, refreshHistory])
   const { scooters, connection } = useScooterFeed({
     userId,
     onBookingEvent: booking.handleEvent,
@@ -142,6 +147,10 @@ function App() {
                 type="button"
                 className="btn btn--ghost btn--small"
                 onClick={() => setAccount('mail')}
+                aria-label={
+                  mailbox.unread > 0 ? `Почта, новых писем: ${mailbox.unread}` : 'Почта'
+                }
+                title={mailbox.unread > 0 ? `Новых писем: ${mailbox.unread}` : undefined}
                 data-testid="open-mail"
               >
                 Почта{mailbox.unread > 0 ? ` · ${mailbox.unread}` : ''}
@@ -199,12 +208,16 @@ function App() {
           user={user}
           activeRide={ride.active}
           history={history.rides}
-          historyLoading={history.loading}
+          historyStatus={history.status}
           emails={mailbox.emails}
+          mailStatus={mailbox.status}
           currency={config.currency}
           now={now}
-          initialTab={account}
+          tab={account}
+          onTabChange={setAccount}
           onOpenMail={mailbox.markSeen}
+          onRetryHistory={() => void history.refresh()}
+          onRetryMail={() => void mailbox.refresh()}
           onClose={() => setAccount(null)}
         />
       )}

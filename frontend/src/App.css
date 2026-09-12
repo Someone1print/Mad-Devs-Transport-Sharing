@@ -497,19 +497,6 @@
   font-size: 20px;
 }
 
-.account__address {
-  flex: 1;
-  color: #64748b;
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.account__header .toast__close {
-  color: #0f172a;
-}
-
 .tabs {
   display: flex;
   gap: 4px;
@@ -632,4 +619,54 @@
   border-radius: 8px;
   font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace;
   white-space: pre-wrap;
+}
+
+.account__top {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.account__top .tabs {
+  border-bottom: none;
+}
+
+.account__who {
+  flex: 1;
+  color: #64748b;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  margin: -8px -10px -8px 0;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: #0f172a;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.account__close:hover,
+.account__close:focus-visible {
+  background: #f1f5f9;
+}
+
+.account:focus {
+  outline: none;
+}
+
+.account__error .link {
+  color: #2563eb;
 }

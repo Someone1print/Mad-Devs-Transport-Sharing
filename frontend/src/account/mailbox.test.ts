@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Email } from '../api/types'
-import { applyEmailEvent, displayMoney, unreadCount } from './mailbox'
+import { applyEmailEvent, displayMoney, mergeInbox, unreadCount, validSeen } from './mailbox'
 
 function email(id: number): Email {
   return {
@@ -20,6 +20,27 @@ describe('applyEmailEvent', () => {
 
     expect(applyEmailEvent(inbox, email(3)).map((e) => e.id)).toEqual([3, 2, 1])
     expect(applyEmailEvent(inbox, email(2))).toBe(inbox)
+  })
+})
+
+describe('mergeInbox', () => {
+  it('keeps an event that arrived while the list was loading, newest first, no duplicates', () => {
+    const known = [email(4)] // pushed over the socket during the request
+    const loaded = [email(3), email(2)] // the server answered before the receipt was written
+
+    expect(mergeInbox(known, loaded).map((e) => e.id)).toEqual([4, 3, 2])
+    expect(mergeInbox([], loaded)).toEqual(loaded)
+    expect(mergeInbox(loaded, loaded).map((e) => e.id)).toEqual([3, 2])
+  })
+})
+
+describe('validSeen', () => {
+  it('drops a stored mark that points past everything the server has (ids restarted)', () => {
+    expect(validSeen(7, [email(3), email(1)])).toBeNull()
+    expect(validSeen(7, [])).toBeNull()
+    expect(validSeen(3, [email(3), email(1)])).toBe(3)
+    expect(validSeen(1, [email(3), email(1)])).toBe(1)
+    expect(validSeen(null, [email(3)])).toBeNull()
   })
 })
 

@@ -9,6 +9,8 @@ import { applyRideEvent, rideErrorMessage } from './rideState'
 interface UseRideOptions {
   userId: number | null
   notify: (toast: ToastInput) => void
+  /** The finish response arrived: the ride is in the history even if the socket event is lost. */
+  onFinished?: (ride: Ride) => void
 }
 
 export interface RideActions {
@@ -35,7 +37,7 @@ function describeError(error: unknown): string {
 }
 
 /** The rider's ride: loaded on start, changed by the buttons and by personal ride events. */
-export function useRide({ userId, notify }: UseRideOptions): RideActions {
+export function useRide({ userId, notify, onFinished }: UseRideOptions): RideActions {
   const [held, setHeld] = useState<{ userId: number | null; ride: Ride | null }>({
     userId: null,
     ride: null,
@@ -148,9 +150,12 @@ export function useRide({ userId, notify }: UseRideOptions): RideActions {
     }
     await run(
       () => finishRide(userId, active.id),
-      (ride) => setFinished(ride),
+      (ride) => {
+        setFinished(ride)
+        onFinished?.(ride)
+      },
     )
-  }, [userId, active, run])
+  }, [userId, active, run, onFinished])
 
   const dismissReceipt = useCallback(() => setFinished(null), [])
 

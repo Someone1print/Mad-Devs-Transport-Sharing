@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { fetchEmails } from '../api/account'
 import type { Email } from '../api/types'
-import { applyEmailEvent, unreadCount } from './mailbox'
+import { applyEmailEvent, mergeInbox, unreadCount, validSeen } from './mailbox'
+import type { LoadStatus } from './useRideHistory'
 
 const SEEN_KEY = 'transport-sharing.mail-seen'
 
@@ -26,6 +27,7 @@ function saveSeen(userId: number, id: number): void {
 export interface Mailbox {
   emails: Email[]
   unread: number
+  status: LoadStatus
   refresh: () => Promise<void>
   /** Mark everything currently in the inbox as read (the user opened the mailbox tab). */
   markSeen: () => void
@@ -36,25 +38,50 @@ interface MailboxState {
   userId: number | null
   emails: Email[]
   seen: number | null
+  status: LoadStatus
 }
+
+const EMPTY: MailboxState = { userId: null, emails: [], seen: null, status: 'loading' }
 
 /** The rider's stored e-mails (the mailbox stub): loaded on start, pushed live, reloaded on demand. */
 export function useMailbox(userId: number | null): Mailbox {
-  const [state, setState] = useState<MailboxState>({ userId: null, emails: [], seen: null })
-  const emails = state.userId === userId ? state.emails : []
-  const seen = state.userId === userId ? state.seen : null
+  const [state, setState] = useState<MailboxState>(EMPTY)
+  const current = state.userId === userId ? state : EMPTY
+
+  // a fresh list never discards an event that arrived while the request was in flight
+  const applyLoaded = useCallback(
+    (loaded: Email[]) => {
+      setState((prev) => {
+        const known = prev.userId === userId ? prev.emails : []
+        const emails = mergeInbox(known, loaded)
+        return { userId, emails, seen: validSeen(loadSeen(userId ?? -1), emails), status: 'ready' }
+      })
+    },
+    [userId],
+  )
+  const applyFailure = useCallback(
+    (error: unknown) => {
+      console.warn('Could not load the mailbox', error)
+      setState((prev) => ({
+        userId,
+        emails: prev.userId === userId ? prev.emails : [],
+        seen: prev.userId === userId ? prev.seen : null,
+        status: 'error',
+      }))
+    },
+    [userId],
+  )
 
   const refresh = useCallback(async () => {
     if (userId === null) {
       return
     }
     try {
-      const loaded = await fetchEmails(userId)
-      setState({ userId, emails: loaded, seen: loadSeen(userId) })
+      applyLoaded(await fetchEmails(userId))
     } catch (error) {
-      console.warn('Could not load the mailbox', error)
+      applyFailure(error)
     }
-  }, [userId])
+  }, [userId, applyLoaded, applyFailure])
 
   useEffect(() => {
     if (userId === null) {
@@ -64,14 +91,18 @@ export function useMailbox(userId: number | null): Mailbox {
     fetchEmails(userId)
       .then((loaded) => {
         if (!cancelled) {
-          setState({ userId, emails: loaded, seen: loadSeen(userId) })
+          applyLoaded(loaded)
         }
       })
-      .catch((error: unknown) => console.warn('Could not load the mailbox', error))
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          applyFailure(error)
+        }
+      })
     return () => {
       cancelled = true
     }
-  }, [userId])
+  }, [userId, applyLoaded, applyFailure])
 
   const handleEvent = useCallback(
     (email: Email) => {
@@ -81,6 +112,7 @@ export function useMailbox(userId: number | null): Mailbox {
           userId,
           emails: applyEmailEvent(same ? prev.emails : [], email),
           seen: same ? prev.seen : loadSeen(userId ?? -1),
+          status: same ? prev.status : 'loading',
         }
       })
     },
@@ -104,5 +136,12 @@ export function useMailbox(userId: number | null): Mailbox {
     })
   }, [userId])
 
-  return { emails, unread: unreadCount(emails, seen), refresh, markSeen, handleEvent }
+  return {
+    emails: current.emails,
+    unread: unreadCount(current.emails, current.seen),
+    status: current.status,
+    refresh,
+    markSeen,
+    handleEvent,
+  }
 }

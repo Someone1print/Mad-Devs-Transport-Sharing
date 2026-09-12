@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, type KeyboardEvent, type MouseEvent } from 'react'
 
 import { displayMoney } from '../account/mailbox'
+import type { LoadStatus } from '../account/useRideHistory'
 import type { Email, Ride, User } from '../api/types'
 import { formatMoney, liveEstimate } from '../ride/billing'
 import { formatDuration } from '../ride/rideState'
@@ -11,14 +12,20 @@ interface AccountPanelProps {
   user: User
   activeRide: Ride | null
   history: Ride[]
-  historyLoading: boolean
+  historyStatus: LoadStatus
   emails: Email[]
+  mailStatus: LoadStatus
   currency: string
   now: number
-  initialTab: AccountTab
+  tab: AccountTab
+  onTabChange: (tab: AccountTab) => void
   onOpenMail: () => void
+  onRetryHistory: () => void
+  onRetryMail: () => void
   onClose: () => void
 }
+
+const FOCUSABLE = 'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
 
 function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString('ru-RU', {
@@ -57,11 +64,33 @@ function ReceiptRows({ ride, currency }: { ride: Ride; currency: string }) {
   )
 }
 
+function LoadFailed({ what, onRetry }: { what: string; onRetry: () => void }) {
+  return (
+    <p className="account__empty account__error" role="alert">
+      Не удалось загрузить {what}.{' '}
+      <button type="button" className="link" onClick={onRetry}>
+        Повторить
+      </button>
+    </p>
+  )
+}
+
 /** The rider's account: current ride, finished rides with receipts, and the mailbox. */
 export function AccountPanel(props: AccountPanelProps) {
-  const { user, activeRide, history, historyLoading, emails, currency, now } = props
-  const { initialTab, onOpenMail, onClose } = props
-  const [tab, setTab] = useState<AccountTab>(initialTab)
+  const { user, activeRide, history, historyStatus, emails, mailStatus, currency, now } = props
+  const { tab, onTabChange, onOpenMail, onRetryHistory, onRetryMail, onClose } = props
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  // a dialog takes the focus and gives it back: keyboard users land inside, not on the map behind
+  useEffect(() => {
+    const opener = document.activeElement
+    panelRef.current?.focus()
+    return () => {
+      if (opener instanceof HTMLElement) {
+        opener.focus()
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (tab === 'mail') {
@@ -69,40 +98,99 @@ export function AccountPanel(props: AccountPanelProps) {
     }
   }, [tab, onOpenMail, emails.length])
 
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      onClose()
+      return
+    }
+    if (event.key !== 'Tab' || !panelRef.current) {
+      return
+    }
+    // keep Tab inside the dialog: the page behind is inert for the mouse, so also for the keyboard
+    const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE))
+    if (focusable.length === 0) {
+      return
+    }
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === panelRef.current)) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
+
+  const onBackdropClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      onClose()
+    }
+  }
+
   const estimate = activeRide ? liveEstimate(activeRide, now) : null
 
   return (
-    <div className="modal modal--right" role="dialog" aria-modal="true" aria-labelledby="account-title">
-      <div className="account" data-testid="account">
-        <header className="account__header">
-          <h2 id="account-title" className="account__title">
-            {user.name}
-          </h2>
-          <span className="account__address">{emails[0]?.to_address ?? ''}</span>
-          <button type="button" className="toast__close" aria-label="Закрыть" onClick={onClose}>
-            ×
-          </button>
-        </header>
-        <nav className="tabs" aria-label="Разделы кабинета">
-          <button
-            type="button"
-            className={`tabs__tab ${tab === 'rides' ? 'tabs__tab--active' : ''}`}
-            onClick={() => setTab('rides')}
-          >
-            Поездки
-          </button>
-          <button
-            type="button"
-            className={`tabs__tab ${tab === 'mail' ? 'tabs__tab--active' : ''}`}
-            onClick={() => setTab('mail')}
-            data-testid="tab-mail"
-          >
-            Почта{emails.length > 0 ? ` (${emails.length})` : ''}
-          </button>
-        </nav>
+    <div className="modal modal--right" onClick={onBackdropClick}>
+      <div
+        className="account"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="account-title"
+        tabIndex={-1}
+        ref={panelRef}
+        onKeyDown={onKeyDown}
+        data-testid="account"
+      >
+        <div className="account__top">
+          <header className="account__header">
+            <h2 id="account-title" className="account__title">
+              Кабинет
+            </h2>
+            <span className="account__who">
+              {user.name}
+              {emails[0] ? ` · ${emails[0].to_address}` : ''}
+            </span>
+            <button type="button" className="account__close" aria-label="Закрыть" onClick={onClose}>
+              ×
+            </button>
+          </header>
+          <div className="tabs" role="tablist" aria-label="Разделы кабинета">
+            <button
+              type="button"
+              role="tab"
+              id="account-tab-rides"
+              aria-selected={tab === 'rides'}
+              aria-controls="account-panel-rides"
+              className={`tabs__tab ${tab === 'rides' ? 'tabs__tab--active' : ''}`}
+              onClick={() => onTabChange('rides')}
+            >
+              Поездки
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="account-tab-mail"
+              aria-selected={tab === 'mail'}
+              aria-controls="account-panel-mail"
+              className={`tabs__tab ${tab === 'mail' ? 'tabs__tab--active' : ''}`}
+              onClick={() => onTabChange('mail')}
+              data-testid="tab-mail"
+            >
+              Почта{emails.length > 0 ? ` (${emails.length})` : ''}
+            </button>
+          </div>
+        </div>
 
         {tab === 'rides' && (
-          <section className="account__section" data-testid="rides-tab">
+          <section
+            className="account__section"
+            role="tabpanel"
+            id="account-panel-rides"
+            aria-labelledby="account-tab-rides"
+            data-testid="rides-tab"
+          >
             <h3 className="account__heading">Текущая поездка</h3>
             {activeRide && estimate ? (
               <div className="history__item history__item--current" data-testid="current-ride">
@@ -123,9 +211,11 @@ export function AccountPanel(props: AccountPanelProps) {
             )}
 
             <h3 className="account__heading">История поездок</h3>
-            {history.length === 0 ? (
+            {historyStatus === 'error' && history.length === 0 ? (
+              <LoadFailed what="историю поездок" onRetry={onRetryHistory} />
+            ) : history.length === 0 ? (
               <p className="account__empty">
-                {historyLoading ? 'Загружаем…' : 'Завершённых поездок пока нет.'}
+                {historyStatus === 'loading' ? 'Загружаем…' : 'Завершённых поездок пока нет.'}
               </p>
             ) : (
               <ul className="history" data-testid="history">
@@ -147,9 +237,19 @@ export function AccountPanel(props: AccountPanelProps) {
         )}
 
         {tab === 'mail' && (
-          <section className="account__section" data-testid="mail-tab">
-            {emails.length === 0 ? (
-              <p className="account__empty">Писем пока нет. Чек за поездку придёт сюда.</p>
+          <section
+            className="account__section"
+            role="tabpanel"
+            id="account-panel-mail"
+            aria-labelledby="account-tab-mail"
+            data-testid="mail-tab"
+          >
+            {mailStatus === 'error' && emails.length === 0 ? (
+              <LoadFailed what="почту" onRetry={onRetryMail} />
+            ) : emails.length === 0 ? (
+              <p className="account__empty">
+                {mailStatus === 'loading' ? 'Загружаем…' : 'Писем пока нет. Чек за поездку придёт сюда.'}
+              </p>
             ) : (
               <ul className="mail" data-testid="mail-list">
                 {emails.map((email) => (
