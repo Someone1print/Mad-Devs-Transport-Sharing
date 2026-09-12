@@ -116,18 +116,15 @@ def random_edge_point(
 
     near_lat = near[0] if near else None
     near_lon = near[1] if near else None
-    if side == 0:  # south
-        return rng.uniform(bbox.min_lat, core.min_lat), along(
-            near_lon, bbox.min_lon, bbox.max_lon, 0.004
-        )
-    if side == 1:  # north
-        return rng.uniform(core.max_lat, bbox.max_lat), along(
-            near_lon, bbox.min_lon, bbox.max_lon, 0.004
-        )
-    if side == 2:  # west
-        return along(near_lat, bbox.min_lat, bbox.max_lat, 0.003), rng.uniform(
-            bbox.min_lon, core.min_lon
-        )
-    return along(near_lat, bbox.min_lat, bbox.max_lat, 0.003), rng.uniform(
-        core.max_lon, bbox.max_lon
-    )
+    # the outer half of the band: far enough beyond the service zone to stay outside a while
+    south = (bbox.min_lat, (bbox.min_lat + core.min_lat) / 2)
+    north = ((core.max_lat + bbox.max_lat) / 2, bbox.max_lat)
+    west = (bbox.min_lon, (bbox.min_lon + core.min_lon) / 2)
+    east = ((core.max_lon + bbox.max_lon) / 2, bbox.max_lon)
+    if side == 0:
+        return rng.uniform(*south), along(near_lon, bbox.min_lon, bbox.max_lon, 0.004)
+    if side == 1:
+        return rng.uniform(*north), along(near_lon, bbox.min_lon, bbox.max_lon, 0.004)
+    if side == 2:
+        return along(near_lat, bbox.min_lat, bbox.max_lat, 0.003), rng.uniform(*west)
+    return along(near_lat, bbox.min_lat, bbox.max_lat, 0.003), rng.uniform(*east)
