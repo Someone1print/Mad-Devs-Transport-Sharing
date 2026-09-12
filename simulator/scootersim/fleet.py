@@ -75,7 +75,7 @@ class Fleet:
         a few minutes instead of waiting for random targets to cross the boundary."""
         scooter.legs += 1
         if scooter.legs % 2 == 1:
-            return random_edge_point(RIDE_BBOX, self.rng)
+            return random_edge_point(RIDE_BBOX, self.rng, near=(scooter.lat, scooter.lon))
         return random_point(inner_box(RIDE_BBOX), self.rng)
 
     def _stop(self, scooter: SimScooter) -> None:

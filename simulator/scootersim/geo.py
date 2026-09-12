@@ -73,10 +73,26 @@ def in_edge_band(point: tuple[float, float], bbox: BBox) -> bool:
     return in_bbox(point, bbox) and not in_bbox(point, inner_box(bbox))
 
 
-def random_edge_point(bbox: BBox, rng: random.Random) -> tuple[float, float]:
-    """A point in the outer band of the box: on a random side, within EDGE_SHARE of it."""
+def random_edge_point(
+    bbox: BBox, rng: random.Random, near: tuple[float, float] | None = None
+) -> tuple[float, float]:
+    """A point in the outer band of the box, within EDGE_SHARE of one side.
+
+    With `near`, the side closest to that position is chosen (a rider reaches it soonest);
+    otherwise a random side.
+    """
     core = inner_box(bbox)
-    side = rng.randrange(4)
+    if near is None:
+        side = rng.randrange(4)
+    else:
+        lat, lon = near
+        distances = [
+            (lat - bbox.min_lat) * 111.2,  # south, km
+            (bbox.max_lat - lat) * 111.2,  # north
+            (lon - bbox.min_lon) * 81.5,  # west (km per degree of longitude at ~42.9° N)
+            (bbox.max_lon - lon) * 81.5,  # east
+        ]
+        side = distances.index(min(distances))
     if side == 0:  # south
         return rng.uniform(bbox.min_lat, core.min_lat), rng.uniform(bbox.min_lon, bbox.max_lon)
     if side == 1:  # north

@@ -61,3 +61,16 @@ def test_random_edge_point_lies_in_the_outer_band() -> None:
     rng = random.Random(11)
     for _ in range(200):
         assert in_edge_band(random_edge_point(BISHKEK_BBOX, rng), BISHKEK_BBOX)
+
+
+def test_random_edge_point_near_a_position_picks_the_closest_side() -> None:
+    import random
+
+    rng = random.Random(3)
+    core = inner_box(BISHKEK_BBOX)
+    # just inside the core, close to its western side: the point must land in the western band
+    lat, lon = (core.min_lat + core.max_lat) / 2, core.min_lon + 0.0005
+    for _ in range(50):
+        point = random_edge_point(BISHKEK_BBOX, rng, near=(lat, lon))
+        assert in_edge_band(point, BISHKEK_BBOX)
+        assert point[1] < core.min_lon
