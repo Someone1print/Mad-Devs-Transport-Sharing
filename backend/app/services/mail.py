@@ -1,4 +1,3 @@
-# ruff: noqa: RUF001 -- the transliteration table is Cyrillic on purpose
 """Mailbox stub: e-mails are rows in `emails`, never sent anywhere (no SMTP, per the assignment).
 
 Idempotent by construction: `send_email` inserts with ON CONFLICT (dedup_key) DO NOTHING, so a

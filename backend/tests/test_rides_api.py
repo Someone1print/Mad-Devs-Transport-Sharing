@@ -1,10 +1,8 @@
 """HTTP layer of rides: payloads, status codes, events; time is controlled via app.core.clock."""
 
 import asyncio
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import pytest
 from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -15,7 +13,6 @@ from app.realtime.hub import hub
 from app.seed import seed_zones
 from tests.test_bookings import headers, make_scooter, make_user
 
-T0 = datetime(2026, 9, 12, 12, 0, 0, tzinfo=UTC)
 INSIDE = (42.8756, 74.6036)
 OUTSIDE = (42.8500, 74.6000)
 
@@ -29,21 +26,6 @@ class FakeSocket:
 
     def of_type(self, event_type: str) -> list[dict[str, Any]]:
         return [m for m in self.sent if m["type"] == event_type]
-
-
-@pytest.fixture
-def clock(monkeypatch: pytest.MonkeyPatch):
-    """Controllable time for the API: `clock.set(seconds)` moves "now" to T0 + seconds."""
-
-    class Clock:
-        current = T0
-
-        def set(self, seconds: int) -> None:
-            self.current = T0 + timedelta(seconds=seconds)
-
-    instance = Clock()
-    monkeypatch.setattr("app.core.clock.now", lambda: instance.current)
-    return instance
 
 
 async def booked_via_api(

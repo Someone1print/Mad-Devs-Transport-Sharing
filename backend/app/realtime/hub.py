@@ -3,6 +3,7 @@ import logging
 from typing import Any, Protocol
 
 from app.schemas.booking import BookingOut
+from app.schemas.email import EmailOut
 from app.schemas.ride import RideOut
 from app.schemas.scooter import ScooterOut
 
@@ -71,6 +72,11 @@ def booking_event(event_type: str, booking: BookingOut, **extra: Any) -> dict[st
 def ride_event(event_type: str, ride: RideOut) -> dict[str, Any]:
     """Personal event about the user's ride: ride.started / paused / resumed / finished."""
     return {"type": event_type, "ride": ride.model_dump(mode="json")}
+
+
+def email_event(email: EmailOut) -> dict[str, Any]:
+    """Personal event: a new message landed in the user's mailbox."""
+    return {"type": "email.sent", "email": email.model_dump(mode="json")}
 
 
 hub = ScooterHub()
