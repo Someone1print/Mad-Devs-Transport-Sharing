@@ -50,6 +50,17 @@ def random_point(bbox: BBox, rng: random.Random) -> tuple[float, float]:
     return rng.uniform(bbox.min_lat, bbox.max_lat), rng.uniform(bbox.min_lon, bbox.max_lon)
 
 
+def random_point_near(
+    bbox: BBox, rng: random.Random, near: tuple[float, float], jitter: float = 0.004
+) -> tuple[float, float]:
+    """A point of the box close to `near`: `near` clamped into the box, then jittered."""
+    lat = min(bbox.max_lat, max(bbox.min_lat, near[0]))
+    lon = min(bbox.max_lon, max(bbox.min_lon, near[1]))
+    lat = min(bbox.max_lat, max(bbox.min_lat, lat + rng.uniform(-jitter, jitter)))
+    lon = min(bbox.max_lon, max(bbox.min_lon, lon + rng.uniform(-jitter, jitter)))
+    return lat, lon
+
+
 def in_bbox(point: tuple[float, float], bbox: BBox) -> bool:
     lat, lon = point
     return bbox.min_lat <= lat <= bbox.max_lat and bbox.min_lon <= lon <= bbox.max_lon

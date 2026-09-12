@@ -8,6 +8,7 @@ from scootersim.geo import (
     inner_box,
     random_edge_point,
     random_point,
+    random_point_near,
     step_towards,
 )
 
@@ -61,6 +62,19 @@ def test_random_edge_point_lies_in_the_outer_band() -> None:
     rng = random.Random(11)
     for _ in range(200):
         assert in_edge_band(random_edge_point(BISHKEK_BBOX, rng), BISHKEK_BBOX)
+
+
+def test_random_point_near_stays_in_the_box_close_to_the_position() -> None:
+    import random
+
+    rng = random.Random(9)
+    core = inner_box(BISHKEK_BBOX)
+    outside_west = (42.875, BISHKEK_BBOX.min_lon)  # in the western edge band
+    for _ in range(50):
+        point = random_point_near(core, rng, near=outside_west)
+        assert in_bbox(point, core)
+        assert abs(point[0] - 42.875) <= 0.004
+        assert point[1] - core.min_lon <= 0.004
 
 
 def test_random_edge_point_near_a_position_picks_the_closest_side() -> None:

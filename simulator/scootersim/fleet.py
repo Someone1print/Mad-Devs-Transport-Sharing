@@ -12,6 +12,7 @@ from scootersim.geo import (
     inner_box,
     random_edge_point,
     random_point,
+    random_point_near,
     step_towards,
 )
 
@@ -74,9 +75,11 @@ class Fleet:
         and its core (inside), so a demo can show both "finish refused" and "finish ok" within
         a few minutes instead of waiting for random targets to cross the boundary."""
         scooter.legs += 1
+        position = (scooter.lat, scooter.lon)
         if scooter.legs % 2 == 1:
-            return random_edge_point(RIDE_BBOX, self.rng, near=(scooter.lat, scooter.lon))
-        return random_point(inner_box(RIDE_BBOX), self.rng)
+            return random_edge_point(RIDE_BBOX, self.rng, near=position)
+        # back into the core by the shortest way, so the ride hovers around the boundary
+        return random_point_near(inner_box(RIDE_BBOX), self.rng, near=position)
 
     def _stop(self, scooter: SimScooter) -> None:
         if scooter.phase is Phase.RIDING:
