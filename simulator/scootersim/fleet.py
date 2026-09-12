@@ -5,7 +5,15 @@ from enum import StrEnum
 from typing import Any
 
 from scootersim.config import Config
-from scootersim.geo import BISHKEK_BBOX, RIDE_BBOX, haversine_km, random_point, step_towards
+from scootersim.geo import (
+    BISHKEK_BBOX,
+    RIDE_BBOX,
+    haversine_km,
+    inner_box,
+    random_edge_point,
+    random_point,
+    step_towards,
+)
 
 
 class Phase(StrEnum):
@@ -26,6 +34,8 @@ class SimScooter:
     idle_ticks: int = 0
     parked: bool = False  # reserved, or a paused user ride: never moved by the simulator
     user_ride: bool = False  # a real user is riding it: keeps moving until the backend frees it
+    legs: int = 0  # legs driven in the current user ride (targets alternate edge / core)
+    user_ride_started: bool = False  # the leg counter was reset for the current user ride
 
     @property
     def battery_percent(self) -> int:
@@ -59,6 +69,15 @@ class Fleet:
         scooter.target = target
         scooter.idle_ticks = 0
 
+    def _next_user_target(self, scooter: SimScooter) -> tuple[float, float]:
+        """User rides alternate between the edge of the riding area (outside the service zone)
+        and its core (inside), so a demo can show both "finish refused" and "finish ok" within
+        a few minutes instead of waiting for random targets to cross the boundary."""
+        scooter.legs += 1
+        if scooter.legs % 2 == 1:
+            return random_edge_point(RIDE_BBOX, self.rng)
+        return random_point(inner_box(RIDE_BBOX), self.rng)
+
     def _stop(self, scooter: SimScooter) -> None:
         if scooter.phase is Phase.RIDING:
             scooter.phase = Phase.IDLE
@@ -70,14 +89,14 @@ class Fleet:
         if scooter is None:
             return
         if status == "unavailable":
-            scooter.parked = scooter.user_ride = False
+            scooter.parked = scooter.user_ride = scooter.user_ride_started = False
             if scooter.phase is not Phase.CHARGING:
                 scooter.phase = Phase.CHARGING
                 scooter.target = None
                 scooter.charging_until = now + self.config.recharge_seconds
         elif status == "reserved":
             # someone holds the scooter: it stays where it is until the backend frees it
-            scooter.parked, scooter.user_ride = True, False
+            scooter.parked, scooter.user_ride, scooter.user_ride_started = True, False, False
             self._stop(scooter)
         elif status == "riding":
             # a real user drives it: it keeps moving (inside the wider ride area) unless paused
@@ -86,9 +105,12 @@ class Fleet:
             if paused:
                 self._stop(scooter)
             elif scooter.phase is not Phase.RIDING and scooter.battery > 0.0:
-                self.start_ride(scooter, random_point(RIDE_BBOX, self.rng), now)
+                if not scooter.user_ride_started:
+                    scooter.legs = 0
+                    scooter.user_ride_started = True
+                self.start_ride(scooter, self._next_user_target(scooter), now)
         elif status == "available":
-            scooter.parked = scooter.user_ride = False
+            scooter.parked = scooter.user_ride = scooter.user_ride_started = False
             if scooter.phase is Phase.RIDING and scooter.target is not None:
                 # the user's ride ended: the demo target lies in the wider area, drop it
                 self._stop(scooter)
@@ -136,7 +158,7 @@ class Fleet:
             self._stop(scooter)
         elif reached:
             if scooter.user_ride:
-                scooter.target = random_point(RIDE_BBOX, self.rng)  # the user drives on
+                scooter.target = self._next_user_target(scooter)  # the user drives on
             else:
                 self._stop(scooter)
 

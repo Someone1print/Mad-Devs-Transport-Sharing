@@ -3,7 +3,7 @@
 import random
 
 from scootersim.fleet import Fleet, Phase, SimScooter
-from scootersim.geo import BISHKEK_BBOX, RIDE_BBOX, haversine_km
+from scootersim.geo import BISHKEK_BBOX, RIDE_BBOX, haversine_km, in_bbox, in_edge_band, inner_box
 from tests.test_fleet import make_config
 
 
@@ -45,13 +45,28 @@ def test_user_ride_keeps_going_after_reaching_its_target() -> None:
     scooter.target = (42.87005, 74.5900)  # ~5 m away: reached on the first tick
 
     fleet.tick(dt=1.0, now=1.0)
-    first_target = scooter.target
+    next_target = scooter.target
     fleet.tick(dt=1.0, now=2.0)
 
     assert scooter.phase is Phase.RIDING
-    assert first_target is not None and first_target != (42.87005, 74.5900)
-    assert RIDE_BBOX.min_lat <= first_target[0] <= RIDE_BBOX.max_lat
-    assert RIDE_BBOX.min_lon <= first_target[1] <= RIDE_BBOX.max_lon
+    assert next_target is not None and next_target != (42.87005, 74.5900)
+    assert in_bbox(next_target, RIDE_BBOX)
+
+
+def test_user_ride_targets_alternate_between_the_edge_and_the_core() -> None:
+    """Demo determinism: the first leg heads for the edge of the riding area (outside the
+    service zone), the next one for the core (inside), and so on."""
+    scooter = SimScooter("KG-1", 42.8700, 74.5900, battery=80.0)
+    fleet = make_fleet([scooter], active_scooters=0)
+    fleet.apply_server_status("KG-1", "riding", now=0.0)
+    targets = [scooter.target]
+    for _ in range(3):
+        scooter.lat, scooter.lon = scooter.target  # teleport: reached
+        fleet.tick(dt=1.0, now=1.0)
+        targets.append(scooter.target)
+
+    assert [in_edge_band(t, RIDE_BBOX) for t in targets] == [True, False, True, False]
+    assert [in_bbox(t, inner_box(RIDE_BBOX)) for t in targets] == [False, True, False, True]
 
 
 def test_paused_user_ride_stands_still() -> None:

@@ -1,6 +1,15 @@
 import pytest
 
-from scootersim.geo import BISHKEK_BBOX, haversine_km, random_point, step_towards
+from scootersim.geo import (
+    BISHKEK_BBOX,
+    haversine_km,
+    in_bbox,
+    in_edge_band,
+    inner_box,
+    random_edge_point,
+    random_point,
+    step_towards,
+)
 
 
 def test_haversine_matches_known_distance() -> None:
@@ -34,3 +43,21 @@ def test_random_point_stays_inside_bbox() -> None:
         lat, lon = random_point(BISHKEK_BBOX, rng)
         assert BISHKEK_BBOX.min_lat <= lat <= BISHKEK_BBOX.max_lat
         assert BISHKEK_BBOX.min_lon <= lon <= BISHKEK_BBOX.max_lon
+
+
+def test_inner_box_and_edge_band_partition_the_bbox() -> None:
+    core = inner_box(BISHKEK_BBOX)
+
+    assert core.min_lat > BISHKEK_BBOX.min_lat and core.max_lat < BISHKEK_BBOX.max_lat
+    assert in_bbox((42.875, 74.600), core)
+    assert not in_edge_band((42.875, 74.600), BISHKEK_BBOX)
+    assert in_edge_band((42.856, 74.600), BISHKEK_BBOX)
+    assert not in_edge_band((42.800, 74.600), BISHKEK_BBOX)  # outside the box altogether
+
+
+def test_random_edge_point_lies_in_the_outer_band() -> None:
+    import random
+
+    rng = random.Random(11)
+    for _ in range(200):
+        assert in_edge_band(random_edge_point(BISHKEK_BBOX, rng), BISHKEK_BBOX)

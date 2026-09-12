@@ -48,3 +48,39 @@ def step_towards(
 
 def random_point(bbox: BBox, rng: random.Random) -> tuple[float, float]:
     return rng.uniform(bbox.min_lat, bbox.max_lat), rng.uniform(bbox.min_lon, bbox.max_lon)
+
+
+def in_bbox(point: tuple[float, float], bbox: BBox) -> bool:
+    lat, lon = point
+    return bbox.min_lat <= lat <= bbox.max_lat and bbox.min_lon <= lon <= bbox.max_lon
+
+
+# Share of the box (per side) that counts as its edge; the rest is the core.
+EDGE_SHARE = 0.15
+
+
+def inner_box(bbox: BBox) -> BBox:
+    """The central part of the box, away from its edges."""
+    d_lat = (bbox.max_lat - bbox.min_lat) * EDGE_SHARE
+    d_lon = (bbox.max_lon - bbox.min_lon) * EDGE_SHARE
+    return BBox(
+        bbox.min_lat + d_lat, bbox.max_lat - d_lat, bbox.min_lon + d_lon, bbox.max_lon - d_lon
+    )
+
+
+def in_edge_band(point: tuple[float, float], bbox: BBox) -> bool:
+    """Inside the box but outside its core: within EDGE_SHARE of one of the sides."""
+    return in_bbox(point, bbox) and not in_bbox(point, inner_box(bbox))
+
+
+def random_edge_point(bbox: BBox, rng: random.Random) -> tuple[float, float]:
+    """A point in the outer band of the box: on a random side, within EDGE_SHARE of it."""
+    core = inner_box(bbox)
+    side = rng.randrange(4)
+    if side == 0:  # south
+        return rng.uniform(bbox.min_lat, core.min_lat), rng.uniform(bbox.min_lon, bbox.max_lon)
+    if side == 1:  # north
+        return rng.uniform(core.max_lat, bbox.max_lat), rng.uniform(bbox.min_lon, bbox.max_lon)
+    if side == 2:  # west
+        return rng.uniform(bbox.min_lat, bbox.max_lat), rng.uniform(bbox.min_lon, core.min_lon)
+    return rng.uniform(bbox.min_lat, bbox.max_lat), rng.uniform(core.max_lon, bbox.max_lon)
