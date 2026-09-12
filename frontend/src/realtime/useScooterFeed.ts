@@ -22,6 +22,8 @@ interface FeedOptions {
   userId: number | null
   onBookingEvent?: (event: BookingEvent) => void
   onRideEvent?: (event: RideEvent) => void
+  /** Called after every reconnect (not the first connection): personal state may be stale. */
+  onReconnect?: () => void
 }
 
 const MAX_RECONNECT_DELAY_MS = 15_000
@@ -37,23 +39,27 @@ function identify(socket: WebSocket | null, userId: number | null): void {
  * list, so nothing published in between is lost (stale data is dropped by `updated_at`).
  * Reconnects with exponential backoff and reloads the list after every reconnect.
  */
-export function useScooterFeed({ userId, onBookingEvent, onRideEvent }: FeedOptions): ScooterFeed {
+export function useScooterFeed(options: FeedOptions): ScooterFeed {
+  const { userId, onBookingEvent, onRideEvent, onReconnect } = options
   const [scooters, setScooters] = useState<ScooterStore>(emptyStore)
   const [connection, setConnection] = useState<ConnectionState>('connecting')
   const socketRef = useRef<WebSocket | null>(null)
   const userIdRef = useRef(userId)
   const onBookingEventRef = useRef(onBookingEvent)
   const onRideEventRef = useRef(onRideEvent)
+  const onReconnectRef = useRef(onReconnect)
   useEffect(() => {
     userIdRef.current = userId
     onBookingEventRef.current = onBookingEvent
     onRideEventRef.current = onRideEvent
-  }, [userId, onBookingEvent, onRideEvent])
+    onReconnectRef.current = onReconnect
+  }, [userId, onBookingEvent, onRideEvent, onReconnect])
 
   useEffect(() => {
     let disposed = false
     let attempt = 0
     let reconnectTimer: number | undefined
+    let connections = 0
 
     const loadSnapshot = async () => {
       try {
@@ -71,9 +77,13 @@ export function useScooterFeed({ userId, onBookingEvent, onRideEvent }: FeedOpti
       socketRef.current = socket
       socket.onopen = () => {
         attempt = 0
+        connections += 1
         setConnection('live')
         identify(socket, userIdRef.current)
         void loadSnapshot()
+        if (connections > 1) {
+          onReconnectRef.current?.()
+        }
       }
       socket.onmessage = (message: MessageEvent<string>) => {
         const event = JSON.parse(message.data) as RealtimeEvent

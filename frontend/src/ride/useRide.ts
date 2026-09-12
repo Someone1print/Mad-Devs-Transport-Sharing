@@ -17,7 +17,10 @@ export interface RideActions {
   /** The last finished ride, kept until the receipt is dismissed. */
   finished: Ride | null
   busy: boolean
-  start: (bookingId: number) => Promise<void>
+  /** Resolves to true when the ride is running after the call. */
+  start: (bookingId: number) => Promise<boolean>
+  /** Reload the active ride from the server (after a reconnect). */
+  refresh: () => Promise<void>
   pause: () => Promise<void>
   resume: () => Promise<void>
   finish: () => Promise<void>
@@ -53,6 +56,17 @@ export function useRide({ userId, notify }: UseRideOptions): RideActions {
     [userId],
   )
 
+  const refresh = useCallback(async () => {
+    if (userId === null) {
+      return
+    }
+    try {
+      setRide(await fetchActiveRide(userId))
+    } catch (error) {
+      console.warn('Could not load the active ride', error)
+    }
+  }, [userId, setRide])
+
   useEffect(() => {
     if (userId === null) {
       return
@@ -81,27 +95,32 @@ export function useRide({ userId, notify }: UseRideOptions): RideActions {
   )
 
   const run = useCallback(
-    async (action: () => Promise<Ride>, onDone?: (ride: Ride) => void) => {
+    async (action: () => Promise<Ride>, onDone?: (ride: Ride) => void): Promise<boolean> => {
       setBusy(true)
       try {
         const ride = await action()
         setRide(ride)
         onDone?.(ride)
+        return true
       } catch (error) {
         notify({ kind: 'error', text: describeError(error) })
+        if (error instanceof ApiError && (error.status === 404 || error.status === 409)) {
+          void refresh() // our picture of the ride is stale: reload it from the server
+        }
+        return false
       } finally {
         setBusy(false)
       }
     },
-    [notify, setRide],
+    [notify, setRide, refresh],
   )
 
   const start = useCallback(
     async (bookingId: number) => {
       if (userId === null) {
-        return
+        return false
       }
-      await run(
+      return run(
         () => startRide(userId, bookingId),
         (ride) => notify({ kind: 'success', text: `Поездка на ${ride.scooter_code} началась` }),
       )
@@ -135,5 +154,16 @@ export function useRide({ userId, notify }: UseRideOptions): RideActions {
 
   const dismissReceipt = useCallback(() => setFinished(null), [])
 
-  return { active, finished, busy, start, pause, resume, finish, dismissReceipt, handleEvent }
+  return {
+    active,
+    finished,
+    busy,
+    start,
+    refresh,
+    pause,
+    resume,
+    finish,
+    dismissReceipt,
+    handleEvent,
+  }
 }

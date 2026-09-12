@@ -18,6 +18,8 @@ export interface BookingActions {
   cancel: () => Promise<void>
   /** Forget the booking locally (it was converted into a ride on the server). */
   clear: () => void
+  /** Reload the active booking from the server (after a reconnect). */
+  refresh: () => Promise<void>
   handleEvent: (event: BookingEvent) => void
 }
 
@@ -157,5 +159,5 @@ export function useBooking({ userId, notify }: UseBookingOptions): BookingAction
 
   const clear = useCallback(() => setActive(null), [setActive])
 
-  return { active, busy, book, cancel, clear, handleEvent }
+  return { active, busy, book, cancel, clear, refresh, handleEvent }
 }

@@ -48,10 +48,18 @@ function App() {
     },
     [handleRideEvent, clearBooking],
   )
+  const refreshRide = ride.refresh
+  const refreshBooking = booking.refresh
+  const onReconnect = useCallback(() => {
+    // events sent while the socket was down are gone: reload both personal states
+    void refreshRide()
+    void refreshBooking()
+  }, [refreshRide, refreshBooking])
   const { scooters, connection } = useScooterFeed({
     userId,
     onBookingEvent: booking.handleEvent,
     onRideEvent,
+    onReconnect,
   })
 
   const list = Array.from(scooters.values())
@@ -68,8 +76,9 @@ function App() {
     if (myBooking === null) {
       return
     }
-    await ride.start(myBooking.id)
-    booking.clear()
+    if (await ride.start(myBooking.id)) {
+      booking.clear()
+    }
   }
 
   return (

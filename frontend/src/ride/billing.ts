@@ -20,9 +20,12 @@ export interface Estimate {
 
 /** "7.50" → 750; "12" → 1200. Never a float in between. */
 export function parseMoney(text: string): number {
-  const [whole, fraction = ''] = text.trim().split('.')
+  const trimmed = text.trim()
+  const negative = trimmed.startsWith('-')
+  const [whole, fraction = ''] = (negative ? trimmed.slice(1) : trimmed).split('.')
   const cents = (fraction + '00').slice(0, 2)
-  return Number(whole) * 100 + Number(cents)
+  const kopecks = Number(whole) * 100 + Number(cents)
+  return negative ? -kopecks : kopecks
 }
 
 /** 1419 → "14.19" */

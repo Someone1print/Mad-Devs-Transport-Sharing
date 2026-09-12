@@ -45,6 +45,12 @@ describe('segmentCostKopecks', () => {
     expect(formatMoney(1419)).toBe('14.19')
     expect(formatMoney(5)).toBe('0.05')
   })
+
+  it('keeps the sign and ignores digits beyond the kopeck', () => {
+    expect(parseMoney('-1.50')).toBe(-150)
+    expect(parseMoney('0.129')).toBe(12)
+    expect(formatMoney(-150)).toBe('-1.50')
+  })
 })
 
 describe('segmentSeconds', () => {
