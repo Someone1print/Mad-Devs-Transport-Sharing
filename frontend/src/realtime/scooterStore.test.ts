@@ -10,6 +10,7 @@ function scooter(overrides: Partial<Scooter> = {}): Scooter {
     lon: 74.59,
     battery: 80,
     status: 'available',
+    paused: false,
     updated_at: '2026-09-09T10:00:00Z',
     ...overrides,
   }

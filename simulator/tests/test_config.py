@@ -12,6 +12,7 @@ def test_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.backend_url == "http://localhost:8000"
     assert config.active_scooters == 6
     assert config.interval_seconds == 1.5
+    assert config.refresh_every_ticks == 2
 
 
 def test_config_reads_environment(monkeypatch: pytest.MonkeyPatch) -> None:

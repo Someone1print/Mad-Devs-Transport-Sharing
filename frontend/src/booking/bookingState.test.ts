@@ -91,6 +91,7 @@ describe('bookingErrorMessage', () => {
   it('translates known error codes', () => {
     expect(bookingErrorMessage('scooter_not_available')).toMatch(/другим пользователем/)
     expect(bookingErrorMessage('user_has_active_booking')).toMatch(/уже есть активная бронь/)
+    expect(bookingErrorMessage('user_has_active_ride')).toMatch(/завершите поездку/)
   })
 
   it('falls back to the server message or a generic text', () => {

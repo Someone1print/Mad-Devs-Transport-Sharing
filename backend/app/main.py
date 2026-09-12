@@ -27,6 +27,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
                 hub,
                 interval=settings.booking_sweep_interval_seconds,
                 warn_before=timedelta(seconds=settings.booking_warn_before_seconds),
+                low_battery_threshold=settings.low_battery_threshold,
                 stop=stop,
             ),
             name="booking-sweeper",

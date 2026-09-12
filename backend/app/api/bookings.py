@@ -55,7 +55,11 @@ async def get_active_booking(user: CurrentUser, session: DbSession) -> BookingOu
 async def cancel_booking(booking_id: int, user: CurrentUser, session: DbSession) -> BookingOut:
     try:
         booking = await booking_service.cancel_booking(
-            session, user_id=user.id, booking_id=booking_id, now=datetime.now(UTC)
+            session,
+            user_id=user.id,
+            booking_id=booking_id,
+            now=datetime.now(UTC),
+            low_battery_threshold=settings.low_battery_threshold,
         )
     except BookingError as exc:
         raise HTTPException(exc.status_code, detail=api_error(exc.code, exc.message)) from exc

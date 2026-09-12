@@ -13,6 +13,8 @@ class ScooterOut(BaseModel):
     lon: float
     battery: int
     status: ScooterStatus
+    # a ride on this scooter is paused: the simulator keeps it still, the popup says so
+    paused: bool = False
     updated_at: datetime
 
 

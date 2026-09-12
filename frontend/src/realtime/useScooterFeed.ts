@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { fetchScooters, realtimeUrl } from '../api/scooters'
-import { isBookingEvent, type BookingEvent, type RealtimeEvent } from '../api/types'
+import {
+  isBookingEvent,
+  isRideEvent,
+  type BookingEvent,
+  type RealtimeEvent,
+  type RideEvent,
+} from '../api/types'
 import { applyScooter, applyScooters, emptyStore, type ScooterStore } from './scooterStore'
 
 export type ConnectionState = 'connecting' | 'live' | 'reconnecting'
@@ -15,6 +21,9 @@ interface FeedOptions {
   /** Once known, the socket identifies itself so personal booking events can be delivered. */
   userId: number | null
   onBookingEvent?: (event: BookingEvent) => void
+  onRideEvent?: (event: RideEvent) => void
+  /** Called after every reconnect (not the first connection): personal state may be stale. */
+  onReconnect?: () => void
 }
 
 const MAX_RECONNECT_DELAY_MS = 15_000
@@ -30,21 +39,27 @@ function identify(socket: WebSocket | null, userId: number | null): void {
  * list, so nothing published in between is lost (stale data is dropped by `updated_at`).
  * Reconnects with exponential backoff and reloads the list after every reconnect.
  */
-export function useScooterFeed({ userId, onBookingEvent }: FeedOptions): ScooterFeed {
+export function useScooterFeed(options: FeedOptions): ScooterFeed {
+  const { userId, onBookingEvent, onRideEvent, onReconnect } = options
   const [scooters, setScooters] = useState<ScooterStore>(emptyStore)
   const [connection, setConnection] = useState<ConnectionState>('connecting')
   const socketRef = useRef<WebSocket | null>(null)
   const userIdRef = useRef(userId)
   const onBookingEventRef = useRef(onBookingEvent)
+  const onRideEventRef = useRef(onRideEvent)
+  const onReconnectRef = useRef(onReconnect)
   useEffect(() => {
     userIdRef.current = userId
     onBookingEventRef.current = onBookingEvent
-  }, [userId, onBookingEvent])
+    onRideEventRef.current = onRideEvent
+    onReconnectRef.current = onReconnect
+  }, [userId, onBookingEvent, onRideEvent, onReconnect])
 
   useEffect(() => {
     let disposed = false
     let attempt = 0
     let reconnectTimer: number | undefined
+    let connections = 0
 
     const loadSnapshot = async () => {
       try {
@@ -62,9 +77,13 @@ export function useScooterFeed({ userId, onBookingEvent }: FeedOptions): Scooter
       socketRef.current = socket
       socket.onopen = () => {
         attempt = 0
+        connections += 1
         setConnection('live')
         identify(socket, userIdRef.current)
         void loadSnapshot()
+        if (connections > 1) {
+          onReconnectRef.current?.()
+        }
       }
       socket.onmessage = (message: MessageEvent<string>) => {
         const event = JSON.parse(message.data) as RealtimeEvent
@@ -72,6 +91,8 @@ export function useScooterFeed({ userId, onBookingEvent }: FeedOptions): Scooter
           setScooters((store) => applyScooter(store, event.scooter))
         } else if (isBookingEvent(event)) {
           onBookingEventRef.current?.(event)
+        } else if (isRideEvent(event)) {
+          onRideEventRef.current?.(event)
         }
       }
       socket.onerror = () => socket.close()

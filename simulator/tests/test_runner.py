@@ -34,7 +34,7 @@ class FlakyClient:
 def test_runner_survives_backend_outage_and_backs_off() -> None:
     client = FlakyClient(failures=2)
     sleeps: list[float] = []
-    config = Config(active_scooters=2, interval_seconds=1.0)
+    config = Config(active_scooters=2, interval_seconds=1.0, refresh_every_ticks=0)  # no refresh
 
     run(
         config,

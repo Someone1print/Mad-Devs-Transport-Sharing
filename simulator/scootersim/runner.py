@@ -63,7 +63,12 @@ def run(
                 state = client.send_telemetry(
                     scooter.code, scooter.lat, scooter.lon, scooter.battery_percent
                 )
-                fleet.apply_server_status(scooter.code, str(state.get("status", "")), now)
+                fleet.apply_server_status(
+                    scooter.code,
+                    str(state.get("status", "")),
+                    now,
+                    paused=bool(state.get("paused", False)),
+                )
 
             backoff = 1.0
             sleep(config.interval_seconds)

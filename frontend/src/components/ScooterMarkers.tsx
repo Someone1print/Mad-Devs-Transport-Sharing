@@ -7,12 +7,15 @@ import { STATUS_META } from '../config/status'
 interface ScooterMarkersProps {
   scooters: Iterable<Scooter>
   myBooking: Booking | null
+  /** Code of the scooter the rider is currently riding, if any. */
+  myRideCode: string | null
   now: number
   canBook: boolean
   busy: boolean
   ttlMinutes: number
   onBook: (scooterCode: string) => void
   onCancel: () => void
+  onStart: () => void
 }
 
 interface PopupActionsProps extends Omit<ScooterMarkersProps, 'scooters'> {
@@ -20,8 +23,17 @@ interface PopupActionsProps extends Omit<ScooterMarkersProps, 'scooters'> {
 }
 
 function PopupActions(props: PopupActionsProps) {
-  const { scooter, myBooking, now, canBook, busy, ttlMinutes, onBook, onCancel } = props
+  const { scooter, myBooking, myRideCode, now, canBook, busy, ttlMinutes, onBook, onCancel, onStart } =
+    props
   const mine = myBooking !== null && myBooking.scooter_code === scooter.code
+
+  if (myRideCode === scooter.code) {
+    return (
+      <div className="popup-actions__note">
+        {scooter.paused ? 'Ваша поездка · пауза' : 'Ваша поездка'} — управление в панели слева
+      </div>
+    )
+  }
 
   if (mine && myBooking) {
     return (
@@ -29,6 +41,9 @@ function PopupActions(props: PopupActionsProps) {
         <div className="popup-actions__note">
           Ваша бронь · осталось {formatRemaining(remainingSeconds(myBooking, now))}
         </div>
+        <button type="button" className="btn btn--primary" disabled={busy} onClick={onStart}>
+          Начать поездку
+        </button>
         <button type="button" className="btn btn--ghost" disabled={busy} onClick={onCancel}>
           Отменить бронь
         </button>
@@ -50,11 +65,21 @@ function PopupActions(props: PopupActionsProps) {
         {myBooking !== null && (
           <div className="popup-actions__note">Сначала отмените текущую бронь</div>
         )}
+        {myRideCode !== null && (
+          <div className="popup-actions__note">Сначала завершите поездку</div>
+        )}
       </div>
     )
   }
   if (scooter.status === 'reserved') {
     return <div className="popup-actions__note">Забронирован другим пользователем</div>
+  }
+  if (scooter.status === 'riding') {
+    return (
+      <div className="popup-actions__note">
+        {scooter.paused ? 'В поездке · пауза' : 'В поездке'}
+      </div>
+    )
   }
   return null
 }
@@ -65,7 +90,9 @@ export function ScooterMarkers({ scooters, ...rest }: ScooterMarkersProps) {
     <>
       {Array.from(scooters, (scooter) => {
         const meta = STATUS_META[scooter.status]
-        const mine = rest.myBooking !== null && rest.myBooking.scooter_code === scooter.code
+        const mine =
+          (rest.myBooking !== null && rest.myBooking.scooter_code === scooter.code) ||
+          rest.myRideCode === scooter.code
         return (
           <CircleMarker
             key={scooter.code}

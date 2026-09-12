@@ -13,6 +13,7 @@ class BookingStatus(enum.StrEnum):
     ACTIVE = "active"
     CANCELLED = "cancelled"  # отменена пользователем
     EXPIRED = "expired"  # снята автоматически по истечении срока
+    USED = "used"  # превращена в поездку
 
 
 class Booking(Base):

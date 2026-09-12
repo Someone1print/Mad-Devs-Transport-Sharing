@@ -5,11 +5,12 @@ interface MyBookingProps {
   booking: Booking
   now: number
   busy: boolean
+  onStart: () => void
   onCancel: () => void
 }
 
-/** Header widget: the rider's current hold with a live countdown and a cancel button. */
-export function MyBooking({ booking, now, busy, onCancel }: MyBookingProps) {
+/** Header widget: the rider's current hold with a countdown, start-ride and cancel buttons. */
+export function MyBooking({ booking, now, busy, onStart, onCancel }: MyBookingProps) {
   const left = remainingSeconds(booking, now)
   return (
     <div className="my-booking" data-testid="my-booking">
@@ -18,6 +19,9 @@ export function MyBooking({ booking, now, busy, onCancel }: MyBookingProps) {
       <span className="my-booking__timer" aria-label="Осталось времени">
         {formatRemaining(left)}
       </span>
+      <button type="button" className="btn btn--primary" disabled={busy} onClick={onStart}>
+        Начать поездку
+      </button>
       <button type="button" className="btn btn--ghost" disabled={busy} onClick={onCancel}>
         Отменить
       </button>

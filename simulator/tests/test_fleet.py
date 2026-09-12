@@ -16,6 +16,7 @@ def make_config(**overrides: object) -> Config:
         "recharge_seconds": 30.0,
         "min_ride_battery": 20,
         "heartbeat_ticks": 5,
+        "held_heartbeat_ticks": 2,
     }
     values.update(overrides)
     return Config(**values)  # type: ignore[arg-type]

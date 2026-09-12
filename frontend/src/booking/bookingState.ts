@@ -36,6 +36,7 @@ export function formatRemaining(seconds: number): string {
 const MESSAGES: Record<string, string> = {
   scooter_not_available: 'Самокат уже забронирован другим пользователем',
   user_has_active_booking: 'У вас уже есть активная бронь',
+  user_has_active_ride: 'Сначала завершите поездку',
   scooter_not_found: 'Самокат не найден',
   booking_not_active: 'Бронь уже завершена',
   booking_not_found: 'Бронь не найдена',

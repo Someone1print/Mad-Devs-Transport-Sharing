@@ -3,6 +3,7 @@ import logging
 from typing import Any, Protocol
 
 from app.schemas.booking import BookingOut
+from app.schemas.ride import RideOut
 from app.schemas.scooter import ScooterOut
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,11 @@ def scooter_updated_event(scooter: ScooterOut) -> dict[str, Any]:
 def booking_event(event_type: str, booking: BookingOut, **extra: Any) -> dict[str, Any]:
     """Personal event about the user's booking: booking.created / cancelled / expiring / expired."""
     return {"type": event_type, "booking": booking.model_dump(mode="json"), **extra}
+
+
+def ride_event(event_type: str, ride: RideOut) -> dict[str, Any]:
+    """Personal event about the user's ride: ride.started / paused / resumed / finished."""
+    return {"type": event_type, "ride": ride.model_dump(mode="json")}
 
 
 hub = ScooterHub()

@@ -1,15 +1,23 @@
+import { useCallback } from 'react'
+
 import { usePublicConfig } from './api/config'
+import type { RideEvent } from './api/types'
 import { formatRemaining, remainingSeconds, warningWindowSeconds } from './booking/bookingState'
 import { useBooking } from './booking/useBooking'
 import { CityMap } from './components/CityMap'
 import { MyBooking } from './components/MyBooking'
+import { ReceiptModal } from './components/ReceiptModal'
+import { RidePanel } from './components/RidePanel'
 import { ScooterMarkers } from './components/ScooterMarkers'
 import { ToastStack } from './components/Toasts'
 import { UserGate } from './components/UserGate'
+import { ZoneLayer } from './components/ZoneLayer'
 import { STATUS_META, STATUS_ORDER } from './config/status'
 import { useNow } from './hooks/useNow'
 import { useToasts } from './hooks/useToasts'
 import { useScooterFeed, type ConnectionState } from './realtime/useScooterFeed'
+import { useRide } from './ride/useRide'
+import { useZones } from './ride/useZones'
 import { useCurrentUser } from './user/useCurrentUser'
 import './App.css'
 
@@ -22,23 +30,56 @@ const CONNECTION_LABEL: Record<ConnectionState, string> = {
 function App() {
   const now = useNow(1000)
   const config = usePublicConfig()
+  const zones = useZones()
   const currentUser = useCurrentUser()
   const user = currentUser.state.status === 'ready' ? currentUser.state.user : null
   const userId = user?.id ?? null
   const { toasts, notify, dismiss } = useToasts()
   const booking = useBooking({ userId, notify })
+  const ride = useRide({ userId, notify })
+  const clearBooking = booking.clear
+  const handleRideEvent = ride.handleEvent
+  const onRideEvent = useCallback(
+    (event: RideEvent) => {
+      handleRideEvent(event)
+      if (event.type === 'ride.started') {
+        clearBooking() // the booking was converted into this ride
+      }
+    },
+    [handleRideEvent, clearBooking],
+  )
+  const refreshRide = ride.refresh
+  const refreshBooking = booking.refresh
+  const onReconnect = useCallback(() => {
+    // events sent while the socket was down are gone: reload both personal states
+    void refreshRide()
+    void refreshBooking()
+  }, [refreshRide, refreshBooking])
   const { scooters, connection } = useScooterFeed({
     userId,
     onBookingEvent: booking.handleEvent,
+    onRideEvent,
+    onReconnect,
   })
 
   const list = Array.from(scooters.values())
   const available = list.filter((scooter) => scooter.status === 'available').length
-  const left = booking.active ? remainingSeconds(booking.active, now) : null
+  const myBooking = ride.active === null ? booking.active : null
+  const left = myBooking ? remainingSeconds(myBooking, now) : null
   const expiringSoon =
-    booking.active !== null &&
+    myBooking !== null &&
     left !== null &&
-    left <= warningWindowSeconds(booking.active, config.booking_warn_before_seconds)
+    left <= warningWindowSeconds(myBooking, config.booking_warn_before_seconds)
+  const busy = booking.busy || ride.busy
+
+  const startRide = async () => {
+    if (myBooking === null) {
+      return
+    }
+    if (await ride.start(myBooking.id)) {
+      booking.clear()
+    }
+  }
 
   return (
     <div className="app">
@@ -54,9 +95,19 @@ function App() {
               {STATUS_META[status].label}
             </li>
           ))}
+          <li className="legend__item">
+            <span className="legend__zone" />
+            Зона обслуживания
+          </li>
         </ul>
-        {booking.active && (
-          <MyBooking booking={booking.active} now={now} busy={booking.busy} onCancel={booking.cancel} />
+        {myBooking && (
+          <MyBooking
+            booking={myBooking}
+            now={now}
+            busy={busy}
+            onStart={() => void startRide()}
+            onCancel={() => void booking.cancel()}
+          />
         )}
         <div className="app__stats">
           <span>
@@ -75,26 +126,43 @@ function App() {
           </span>
         </div>
       </header>
-      {expiringSoon && booking.active && left !== null && (
+      {expiringSoon && myBooking && left !== null && (
         <div className="banner" role="alert">
-          Бронь {booking.active.scooter_code} истекает через {formatRemaining(left)}. Начните
-          поездку или продлите бронь, иначе самокат снова станет свободным.
+          Бронь {myBooking.scooter_code} истекает через {formatRemaining(left)}. Начните поездку,
+          иначе самокат снова станет свободным.
         </div>
       )}
       <main className="app__map">
         <CityMap>
+          <ZoneLayer zones={zones} />
           <ScooterMarkers
             scooters={list}
-            myBooking={booking.active}
+            myBooking={myBooking}
+            myRideCode={ride.active?.scooter_code ?? null}
             now={now}
-            canBook={user !== null}
-            busy={booking.busy}
+            canBook={user !== null && ride.active === null}
+            busy={busy}
             ttlMinutes={Math.round(config.booking_ttl_seconds / 60)}
             onBook={(code) => void booking.book(code)}
             onCancel={() => void booking.cancel()}
+            onStart={() => void startRide()}
           />
         </CityMap>
+        {ride.active && (
+          <RidePanel
+            ride={ride.active}
+            scooter={scooters.get(ride.active.scooter_code)}
+            zones={zones}
+            now={now}
+            busy={busy}
+            currency={config.currency}
+            onPause={() => void ride.pause()}
+            onResume={() => void ride.resume()}
+            onFinish={() => void ride.finish()}
+          />
+        )}
       </main>
+      {ride.finished && <ReceiptModal ride={ride.finished} onClose={ride.dismissReceipt} />}
       {currentUser.state.status !== 'ready' && (
         <UserGate loading={currentUser.state.status === 'loading'} onRegister={currentUser.register} />
       )}

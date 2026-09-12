@@ -61,7 +61,9 @@ async def test_sweep_expires_overdue_bookings_and_frees_scooters(db_session: Asy
 
     booking_id, scooter_id = booking.id, scooter.id  # expire_all() below drops loaded state
 
-    result = await sweep_bookings(db_session, hub, now=now, warn_before=WARN_BEFORE)
+    result = await sweep_bookings(
+        db_session, hub, now=now, warn_before=WARN_BEFORE, low_battery_threshold=15
+    )
 
     assert [b.id for b in result.expired] == [booking_id]
     db_session.expire_all()
@@ -89,7 +91,9 @@ async def test_sweep_keeps_an_unavailable_scooter_unavailable(db_session: AsyncS
     hub, _, _ = make_hub(user.id)
     scooter_id = scooter.id
 
-    await sweep_bookings(db_session, hub, now=now, warn_before=WARN_BEFORE)
+    await sweep_bookings(
+        db_session, hub, now=now, warn_before=WARN_BEFORE, low_battery_threshold=15
+    )
 
     db_session.expire_all()
     stored = await db_session.scalar(select(Scooter).where(Scooter.id == scooter_id))
@@ -110,9 +114,15 @@ async def test_sweep_warns_exactly_once_before_expiry(db_session: AsyncSession) 
     hub, owner, bystander = make_hub(user.id)
     booking_id = booking.id
 
-    first = await sweep_bookings(db_session, hub, now=now, warn_before=WARN_BEFORE)
+    first = await sweep_bookings(
+        db_session, hub, now=now, warn_before=WARN_BEFORE, low_battery_threshold=15
+    )
     second = await sweep_bookings(
-        db_session, hub, now=now + timedelta(seconds=10), warn_before=WARN_BEFORE
+        db_session,
+        hub,
+        now=now + timedelta(seconds=10),
+        warn_before=WARN_BEFORE,
+        low_battery_threshold=15,
     )
 
     assert [b.id for b in first.warned] == [booking_id]
@@ -140,12 +150,22 @@ async def test_short_booking_is_warned_at_half_its_length_not_immediately(
     hub, owner, _ = make_hub(user.id)
     booking_id = booking.id
 
-    at_creation = await sweep_bookings(db_session, hub, now=now, warn_before=WARN_BEFORE)
+    at_creation = await sweep_bookings(
+        db_session, hub, now=now, warn_before=WARN_BEFORE, low_battery_threshold=15
+    )
     just_before_half = await sweep_bookings(
-        db_session, hub, now=now + timedelta(seconds=29), warn_before=WARN_BEFORE
+        db_session,
+        hub,
+        now=now + timedelta(seconds=29),
+        warn_before=WARN_BEFORE,
+        low_battery_threshold=15,
     )
     past_half = await sweep_bookings(
-        db_session, hub, now=now + timedelta(seconds=31), warn_before=WARN_BEFORE
+        db_session,
+        hub,
+        now=now + timedelta(seconds=31),
+        warn_before=WARN_BEFORE,
+        low_battery_threshold=15,
     )
 
     assert at_creation.warned == [] and just_before_half.warned == []
@@ -160,7 +180,9 @@ async def test_sweep_does_not_warn_too_early(db_session: AsyncSession) -> None:
     await make_booking(db_session, user.id, scooter, expires_at=now + timedelta(seconds=400))
     hub, owner, _ = make_hub(user.id)
 
-    result = await sweep_bookings(db_session, hub, now=now, warn_before=WARN_BEFORE)
+    result = await sweep_bookings(
+        db_session, hub, now=now, warn_before=WARN_BEFORE, low_battery_threshold=15
+    )
 
     assert result.warned == [] and result.expired == []
     assert owner.sent == []
@@ -185,7 +207,9 @@ async def test_sweep_catches_up_after_a_restart(db_session: AsyncSession) -> Non
     )
     hub = ScooterHub()
 
-    result = await sweep_bookings(db_session, hub, now=now, warn_before=WARN_BEFORE)
+    result = await sweep_bookings(
+        db_session, hub, now=now, warn_before=WARN_BEFORE, low_battery_threshold=15
+    )
 
     assert [b.id for b in result.expired] == [overdue.id]
     assert [b.id for b in result.warned] == [soon.id]
@@ -203,7 +227,12 @@ async def test_sweeper_loop_runs_until_stopped(
     stop = asyncio.Event()
     task = asyncio.create_task(
         run_booking_sweeper(
-            committed_db, ScooterHub(), interval=0.05, warn_before=WARN_BEFORE, stop=stop
+            committed_db,
+            ScooterHub(),
+            interval=0.05,
+            warn_before=WARN_BEFORE,
+            low_battery_threshold=15,
+            stop=stop,
         )
     )
 
