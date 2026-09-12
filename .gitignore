@@ -40,3 +40,6 @@ desktop.ini
 
 # --- Tool artifacts ---
 .playwright-mcp/
+
+# --- Hypothesis ---
+.hypothesis/
