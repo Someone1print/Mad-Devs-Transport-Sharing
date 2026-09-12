@@ -17,6 +17,7 @@ const MESSAGES: Record<string, string> = {
   booking_used: 'По этой брони поездка уже была',
   user_has_active_ride: 'У вас уже есть поездка — сначала завершите её',
   scooter_not_available: 'Самокат сейчас недоступен',
+  scooter_battery_low: 'Самокат разряжен, поездку начать нельзя — отмените бронь',
   ride_finished: 'Поездка уже завершена',
   not_your_ride: 'Это поездка другого пользователя',
   not_your_booking: 'Это бронь другого пользователя',
