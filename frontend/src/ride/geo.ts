@@ -1,8 +1,11 @@
 import type { ZonePoint } from '../api/types'
 
+/** Same boundary tolerance as backend/app/geo.py BOUNDARY_EPS: on the edge (≈10 µm) is inside. */
+const BOUNDARY_EPS = 1e-12
+
 function onSegment(p: ZonePoint, a: ZonePoint, b: ZonePoint): boolean {
   const cross = (b.lat - a.lat) * (p.lon - a.lon) - (b.lon - a.lon) * (p.lat - a.lat)
-  if (Math.abs(cross) > 1e-12) {
+  if (Math.abs(cross) > BOUNDARY_EPS) {
     return false
   }
   return (

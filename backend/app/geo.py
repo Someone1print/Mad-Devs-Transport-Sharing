@@ -15,10 +15,18 @@ class Point(NamedTuple):
     lon: float
 
 
+# Boundary rule: a point whose cross product with an edge is within this tolerance (degrees²;
+# for the ~1.5 km edges of the service zone that is a band of roughly 10 micrometres) lies ON
+# the boundary and counts as inside. Beyond it the even-odd rule decides. The TypeScript mirror
+# (frontend/src/ride/geo.ts) uses the same constant and the same operation order, so both give
+# bit-identical answers; shared/billing-cases.json pins every vertex and edge midpoint.
+BOUNDARY_EPS = 1e-12
+
+
 def _on_segment(p: Point, a: Point, b: Point) -> bool:
     """True if `p` lies on the closed segment a-b (collinear and within the bounding box)."""
     cross = (b.lat - a.lat) * (p.lon - a.lon) - (b.lon - a.lon) * (p.lat - a.lat)
-    if abs(cross) > 1e-12:
+    if abs(cross) > BOUNDARY_EPS:
         return False
     return min(a.lat, b.lat) <= p.lat <= max(a.lat, b.lat) and min(a.lon, b.lon) <= p.lon <= max(
         a.lon, b.lon
