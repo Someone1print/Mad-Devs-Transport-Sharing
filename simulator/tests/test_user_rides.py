@@ -196,3 +196,44 @@ def test_deep_core_lies_inside_the_service_zone_with_a_margin() -> None:
         (deep.max_lat, deep.max_lon),
     ]
     assert all(inside(lat, lon) for lat, lon in corners)
+
+
+def test_available_reply_does_not_abort_a_demo_ride() -> None:
+    """A demo-riding scooter is `available` on the server; every telemetry reply says so."""
+    scooter = SimScooter("KG-1", 42.8700, 74.5900, battery=90.0)
+    fleet = make_fleet([scooter], active_scooters=1)
+    fleet.tick(dt=1.0, now=1.0)  # dispatched as a demo ride
+    assert scooter.phase is Phase.RIDING
+    target = scooter.target
+
+    fleet.apply_server_status("KG-1", "available", now=1.5)
+    fleet.tick(dt=1.0, now=2.0)
+
+    assert scooter.phase is Phase.RIDING
+    assert scooter.target == target
+
+
+def test_resume_continues_the_interrupted_leg() -> None:
+    scooter = SimScooter("KG-1", 42.8700, 74.5900, battery=90.0)
+    fleet = make_fleet([scooter], active_scooters=0)
+    fleet.apply_server_status("KG-1", "riding", now=0.0)
+    target = scooter.target
+
+    fleet.apply_server_status("KG-1", "riding", now=1.0, paused=True)
+    fleet.apply_server_status("KG-1", "riding", now=2.0, paused=False)
+
+    assert scooter.phase is Phase.RIDING
+    assert scooter.target == target
+    assert scooter.legs == 1
+
+
+def test_riding_received_mid_demo_ride_starts_the_user_legs() -> None:
+    scooter = SimScooter("KG-1", 42.8700, 74.5900, battery=90.0)
+    fleet = make_fleet([scooter], active_scooters=1)
+    fleet.tick(dt=1.0, now=1.0)  # demo ride with a target in the demo box
+    demo_target = scooter.target
+
+    fleet.apply_server_status("KG-1", "riding", now=2.0)
+
+    assert scooter.user_ride and scooter.legs == 1
+    assert scooter.target != demo_target and in_edge_band(scooter.target, RIDE_BBOX)

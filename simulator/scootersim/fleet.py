@@ -104,21 +104,26 @@ class Fleet:
             scooter.parked, scooter.user_ride, scooter.user_ride_started = True, False, False
             self._stop(scooter)
         elif status == "riding":
-            # a real user drives it: it keeps moving (inside the wider ride area) unless paused
-            scooter.user_ride = True
+            # a real user drives it: legs alternate edge / core; a pause keeps the current leg
+            was_user_ride = scooter.user_ride_started
+            scooter.user_ride, scooter.user_ride_started = True, True
             scooter.parked = paused
+            if not was_user_ride:
+                scooter.legs = 0
+                scooter.target = None  # a demo target would lie in the wrong area
             if paused:
-                self._stop(scooter)
-            elif scooter.phase is not Phase.RIDING and scooter.battery > 0.0:
-                if not scooter.user_ride_started:
-                    scooter.legs = 0
-                    scooter.user_ride_started = True
-                self.start_ride(scooter, self._next_user_target(scooter), now)
+                scooter.phase = Phase.IDLE
+                scooter.idle_ticks = 0
+            elif (scooter.phase is not Phase.RIDING or scooter.target is None) and (
+                scooter.battery > 0.0
+            ):
+                target = scooter.target or self._next_user_target(scooter)
+                self.start_ride(scooter, target, now)
         elif status == "available":
-            scooter.parked = scooter.user_ride = scooter.user_ride_started = False
-            if scooter.phase is Phase.RIDING and scooter.target is not None:
-                # the user's ride ended: the demo target lies in the wider area, drop it
+            if scooter.user_ride:
+                # the user's ride ended: its target lies in the ride area, drop it
                 self._stop(scooter)
+            scooter.parked = scooter.user_ride = scooter.user_ride_started = False
 
     def refresh_statuses(self, payload: list[dict[str, Any]], now: float) -> None:
         """Apply statuses from a fresh GET /api/scooters; unknown codes are ignored."""
