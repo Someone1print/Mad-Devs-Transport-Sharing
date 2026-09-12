@@ -26,7 +26,7 @@ class Config:
     recharge_seconds: float = 180.0  # how long a "technician" needs to swap the battery
     min_ride_battery: int = 20  # idle scooters below this do not start rides
     heartbeat_ticks: int = 20  # idle scooters report every N ticks
-    refresh_every_ticks: int = 10  # re-read scooter statuses from the backend every N ticks
+    refresh_every_ticks: int = 2  # re-read scooter statuses from the backend every N ticks (3 s)
     held_heartbeat_ticks: int = 2  # reserved / paused scooters report every N ticks
 
     @classmethod
