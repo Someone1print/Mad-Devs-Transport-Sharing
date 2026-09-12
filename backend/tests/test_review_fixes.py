@@ -260,3 +260,53 @@ async def test_outside_zone_message_is_english_like_every_other_api_error(
         "code": "outside_service_zone",
         "message": "The scooter is outside the service zone; return inside it to finish the ride",
     }
+
+
+# --- 10. sub-second toggling cannot zero the bill: segment seconds carry the remainder ---
+
+
+async def test_rapid_pause_resume_toggling_still_bills_the_whole_ride(
+    db_session: AsyncSession,
+) -> None:
+    from datetime import timedelta as td
+
+    user_id, scooter_id, booking_id = await booked(db_session)
+    await place(db_session, scooter_id, INSIDE)
+    ride, _ = await ride_service.start_ride(db_session, user_id, booking_id, TARIFF, at(0))
+    ride_id = ride.id
+    t = T0
+    for i in range(20):  # a toggle every 0.9 s: every segment is shorter than a second
+        t += td(milliseconds=900)
+        action = ride_service.pause_ride if i % 2 == 0 else ride_service.resume_ride
+        await action(db_session, user_id, ride_id, t)
+    t += td(milliseconds=900)  # 18.9 s in total
+
+    finished, _ = await ride_service.finish_ride(db_session, user_id, ride_id, ZONES, THRESHOLD, t)
+
+    assert finished.ride_seconds + finished.pause_seconds == 18  # floor(18.9), not 0
+    assert finished.total_cost > Decimal("0.00")
+    assert sum(s.seconds or 0 for s in finished.segments) == 18
+    # per segment, seconds are the whole seconds elapsed since the ride start, differenced
+    assert all(s.seconds in (0, 1) for s in finished.segments)
+
+
+async def test_segment_seconds_sum_to_the_whole_ride_duration(db_session: AsyncSession) -> None:
+    from datetime import timedelta as td
+
+    user_id, scooter_id, booking_id = await booked(db_session)
+    await place(db_session, scooter_id, INSIDE)
+    ride, _ = await ride_service.start_ride(db_session, user_id, booking_id, TARIFF, at(0))
+    ride_id = ride.id
+    await ride_service.pause_ride(
+        db_session, user_id, ride_id, T0 + td(seconds=10, milliseconds=600)
+    )
+    await ride_service.resume_ride(
+        db_session, user_id, ride_id, T0 + td(seconds=20, milliseconds=700)
+    )
+
+    finished, _ = await ride_service.finish_ride(
+        db_session, user_id, ride_id, ZONES, THRESHOLD, T0 + td(seconds=30, milliseconds=900)
+    )
+
+    assert [s.seconds for s in finished.segments] == [10, 10, 10]
+    assert finished.ride_seconds == 20 and finished.pause_seconds == 10

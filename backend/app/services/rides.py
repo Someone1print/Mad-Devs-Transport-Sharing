@@ -101,7 +101,12 @@ def _close_segment(ride: Ride, segment: RideSegment, now: datetime) -> datetime:
         else ride.pause_rate_per_minute
     )
     segment.ended_at = now
-    segment.seconds = duration_seconds(segment.started_at, now)
+    # Whole seconds since the ride started, differenced: the sub-second remainder of one
+    # segment carries into the next instead of being dropped, so the segments always sum to
+    # floor(total duration) and toggling pause/resume quickly cannot zero the bill.
+    segment.seconds = duration_seconds(ride.started_at, now) - duration_seconds(
+        ride.started_at, segment.started_at
+    )
     segment.cost = segment_cost(rate, segment.seconds)
     return now
 
