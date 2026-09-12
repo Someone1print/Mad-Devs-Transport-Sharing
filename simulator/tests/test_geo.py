@@ -74,3 +74,6 @@ def test_random_edge_point_near_a_position_picks_the_closest_side() -> None:
         point = random_edge_point(BISHKEK_BBOX, rng, near=(lat, lon))
         assert in_edge_band(point, BISHKEK_BBOX)
         assert point[1] < core.min_lon
+        assert (
+            abs(point[0] - lat) <= 0.003
+        )  # roughly opposite the rider, not anywhere along the side

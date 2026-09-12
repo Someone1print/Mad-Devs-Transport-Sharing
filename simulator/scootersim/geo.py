@@ -78,8 +78,9 @@ def random_edge_point(
 ) -> tuple[float, float]:
     """A point in the outer band of the box, within EDGE_SHARE of one side.
 
-    With `near`, the side closest to that position is chosen (a rider reaches it soonest);
-    otherwise a random side.
+    With `near`, the side closest to that position is chosen and the point lies roughly
+    opposite it (a rider reaches it by the shortest way); otherwise a random side and a
+    random position along it.
     """
     core = inner_box(bbox)
     if near is None:
@@ -93,10 +94,26 @@ def random_edge_point(
             (bbox.max_lon - lon) * 81.5,  # east
         ]
         side = distances.index(min(distances))
+
+    def along(value: float | None, low: float, high: float, jitter: float) -> float:
+        if value is None:
+            return rng.uniform(low, high)
+        return min(high, max(low, value + rng.uniform(-jitter, jitter)))
+
+    near_lat = near[0] if near else None
+    near_lon = near[1] if near else None
     if side == 0:  # south
-        return rng.uniform(bbox.min_lat, core.min_lat), rng.uniform(bbox.min_lon, bbox.max_lon)
+        return rng.uniform(bbox.min_lat, core.min_lat), along(
+            near_lon, bbox.min_lon, bbox.max_lon, 0.004
+        )
     if side == 1:  # north
-        return rng.uniform(core.max_lat, bbox.max_lat), rng.uniform(bbox.min_lon, bbox.max_lon)
+        return rng.uniform(core.max_lat, bbox.max_lat), along(
+            near_lon, bbox.min_lon, bbox.max_lon, 0.004
+        )
     if side == 2:  # west
-        return rng.uniform(bbox.min_lat, bbox.max_lat), rng.uniform(bbox.min_lon, core.min_lon)
-    return rng.uniform(bbox.min_lat, bbox.max_lat), rng.uniform(core.max_lon, bbox.max_lon)
+        return along(near_lat, bbox.min_lat, bbox.max_lat, 0.003), rng.uniform(
+            bbox.min_lon, core.min_lon
+        )
+    return along(near_lat, bbox.min_lat, bbox.max_lat, 0.003), rng.uniform(
+        core.max_lon, bbox.max_lon
+    )
