@@ -12,6 +12,7 @@ ENV_NAMES = {
     "min_ride_battery": "SIM_MIN_RIDE_BATTERY",
     "heartbeat_ticks": "SIM_HEARTBEAT_TICKS",
     "refresh_every_ticks": "SIM_REFRESH_TICKS",
+    "held_heartbeat_ticks": "SIM_HELD_HEARTBEAT_TICKS",
 }
 
 
@@ -26,6 +27,7 @@ class Config:
     min_ride_battery: int = 20  # idle scooters below this do not start rides
     heartbeat_ticks: int = 20  # idle scooters report every N ticks
     refresh_every_ticks: int = 10  # re-read scooter statuses from the backend every N ticks
+    held_heartbeat_ticks: int = 2  # reserved / paused scooters report every N ticks
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Config":

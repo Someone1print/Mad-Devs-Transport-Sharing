@@ -133,3 +133,21 @@ def test_flat_battery_stops_a_user_ride_locally() -> None:
     assert scooter.battery == 0.0
     assert scooter.phase is Phase.IDLE
     assert moved > 0
+
+
+def test_held_scooters_report_often_so_status_changes_are_seen_quickly() -> None:
+    """A reserved or paused scooter is about to change state (ride start / resume): it reports
+    every `held_heartbeat_ticks` ticks instead of the idle heartbeat, so the simulator learns the
+    new status from the telemetry response within a few seconds."""
+    reserved = SimScooter("KG-1", 42.87, 74.59, battery=90.0)
+    paused = SimScooter("KG-2", 42.87, 74.59, battery=90.0)
+    idle = SimScooter("KG-3", 42.87, 74.59, battery=90.0)
+    fleet = make_fleet(
+        [reserved, paused, idle], active_scooters=0, heartbeat_ticks=20, held_heartbeat_ticks=2
+    )
+    fleet.apply_server_status("KG-1", "reserved", now=0.0)
+    fleet.apply_server_status("KG-2", "riding", now=0.0, paused=True)
+
+    reports = [[s.code for s in fleet.tick(dt=1.0, now=float(t))] for t in range(1, 5)]
+
+    assert reports == [[], ["KG-1", "KG-2"], [], ["KG-1", "KG-2"]]

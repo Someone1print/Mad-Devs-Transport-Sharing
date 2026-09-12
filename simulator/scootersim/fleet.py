@@ -141,7 +141,14 @@ class Fleet:
                     due.append(scooter)
             else:
                 scooter.idle_ticks += 1
-                if scooter.idle_ticks >= self.config.heartbeat_ticks:
+                # a held scooter (reserved, or a paused user ride) is about to change state:
+                # report often so the new status arrives in the next telemetry response
+                heartbeat = (
+                    self.config.held_heartbeat_ticks
+                    if scooter.parked
+                    else self.config.heartbeat_ticks
+                )
+                if scooter.idle_ticks >= heartbeat:
                     scooter.idle_ticks = 0
                     due.append(scooter)
         self._dispatch_rides(now)
