@@ -16,9 +16,10 @@ class BBox:
 # Central Bishkek: roughly 4.5 km north-south by 5.7 km east-west
 BISHKEK_BBOX = BBox(min_lat=42.855, max_lat=42.895, min_lon=74.565, max_lon=74.635)
 
-# Where user rides may wander: deliberately wider than the backend's service zone, so a ride
-# can end up outside it and the "finish only inside the zone" rule can be demonstrated.
-RIDE_BBOX = BBox(min_lat=42.850, max_lat=42.900, min_lon=74.560, max_lon=74.640)
+# Where user rides may wander: about half a kilometre beyond the backend's service zone on
+# every side (the zone covers ~45 % of this box), so a ride regularly crosses the boundary and
+# the "finish only inside the zone" rule can be demonstrated within a couple of minutes.
+RIDE_BBOX = BBox(min_lat=42.856, max_lat=42.894, min_lon=74.570, max_lon=74.630)
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

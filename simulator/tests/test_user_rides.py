@@ -11,11 +11,17 @@ def make_fleet(scooters: list[SimScooter], **overrides: object) -> Fleet:
     return Fleet(scooters, make_config(**overrides), random.Random(5))
 
 
-def test_ride_bbox_is_wider_than_the_demo_bbox() -> None:
-    assert RIDE_BBOX.min_lat < BISHKEK_BBOX.min_lat
-    assert RIDE_BBOX.max_lat > BISHKEK_BBOX.max_lat
-    assert RIDE_BBOX.min_lon < BISHKEK_BBOX.min_lon
-    assert RIDE_BBOX.max_lon > BISHKEK_BBOX.max_lon
+# the backend's service zone (backend/app/zones.py), for the "slightly wider" check below
+ZONE_MIN_LAT, ZONE_MAX_LAT, ZONE_MIN_LON, ZONE_MAX_LON = 42.8615, 42.8885, 74.5775, 74.6225
+
+
+def test_ride_bbox_is_slightly_wider_than_the_service_zone() -> None:
+    assert RIDE_BBOX.min_lat < ZONE_MIN_LAT and RIDE_BBOX.max_lat > ZONE_MAX_LAT
+    assert RIDE_BBOX.min_lon < ZONE_MIN_LON and RIDE_BBOX.max_lon > ZONE_MAX_LON
+    # ...but not by much: at most ~0.8 km beyond the zone on any side
+    assert ZONE_MIN_LAT - RIDE_BBOX.min_lat < 0.008 and RIDE_BBOX.max_lat - ZONE_MAX_LAT < 0.008
+    assert ZONE_MIN_LON - RIDE_BBOX.min_lon < 0.010 and RIDE_BBOX.max_lon - ZONE_MAX_LON < 0.010
+    assert BISHKEK_BBOX.min_lat <= RIDE_BBOX.min_lat  # demo rides stay in the old, larger box
 
 
 def test_riding_status_makes_the_scooter_move_and_drain() -> None:
