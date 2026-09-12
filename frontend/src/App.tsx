@@ -119,8 +119,8 @@ function App() {
       </header>
       {expiringSoon && myBooking && left !== null && (
         <div className="banner" role="alert">
-          Бронь {myBooking.scooter_code} истекает через {formatRemaining(left)}. Начните поездку
-          или продлите бронь, иначе самокат снова станет свободным.
+          Бронь {myBooking.scooter_code} истекает через {formatRemaining(left)}. Начните поездку,
+          иначе самокат снова станет свободным.
         </div>
       )}
       <main className="app__map">
@@ -129,6 +129,7 @@ function App() {
           <ScooterMarkers
             scooters={list}
             myBooking={myBooking}
+            myRideCode={ride.active?.scooter_code ?? null}
             now={now}
             canBook={user !== null && ride.active === null}
             busy={busy}
