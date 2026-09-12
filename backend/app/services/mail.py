@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Email, User
 
 MAIL_DOMAIN = "example.invalid"  # RFC 2606: guaranteed never to resolve
+LOCAL_PART_MAX = 64  # RFC 5321; also keeps a 64-char name of 4-letter expansions in String(255)
 
 _TRANSLIT = {
     "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo", "ж": "zh",
@@ -28,7 +29,7 @@ def address_for(name: str) -> str:
     lowered = name.strip().lower()
     latin = "".join(_TRANSLIT.get(ch, ch) for ch in lowered)
     ascii_only = unicodedata.normalize("NFKD", latin).encode("ascii", "ignore").decode()
-    slug = re.sub(r"[^a-z0-9]+", "-", ascii_only).strip("-")
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_only).strip("-")[:LOCAL_PART_MAX].rstrip("-")
     return f"{slug or 'user'}@{MAIL_DOMAIN}"
 
 

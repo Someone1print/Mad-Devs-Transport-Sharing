@@ -52,6 +52,34 @@ async def test_finishing_a_ride_sends_exactly_one_receipt_email(
     assert "Ехали: 2 мин 00 с" in email["body"]
     assert "Стояли: 0 мин 30 с" in email["body"]
     assert email["dedup_key"] == f"ride:{ride['id']}:receipt"
+    # the ride window in the service's zone (API_T0 12:00 UTC is 18:00 in Bishkek), labelled
+    assert "завершена (12.09.2026 18:00 — 18:02 (UTC+6))" in email["body"]
+
+
+async def test_receipt_is_sent_for_a_rider_with_the_widest_64_char_name(
+    client: AsyncClient, db_session: AsyncSession, clock
+) -> None:
+    await seed_zones(db_session)
+    user = await make_user(db_session, "щ" * 64)
+    scooter = await make_scooter(db_session)
+    scooter.lat, scooter.lon = INSIDE
+    await db_session.commit()
+    hdrs = headers(user)
+    booking = (
+        await client.post("/api/bookings", json={"scooter_code": "KG-B1"}, headers=hdrs)
+    ).json()
+    ride_id = (
+        await client.post("/api/rides", json={"booking_id": booking["id"]}, headers=hdrs)
+    ).json()["id"]
+    clock.set(60)
+
+    finished = await client.post(f"/api/rides/{ride_id}/finish", headers=hdrs)
+    emails = (await client.get("/api/emails", headers=hdrs)).json()
+
+    assert finished.status_code == 200
+    assert finished.json()["status"] == "finished"
+    assert len(emails) == 1
+    assert len(emails[0]["to_address"]) <= 255
 
 
 async def test_double_finish_does_not_send_a_second_email(
@@ -113,13 +141,26 @@ async def test_emails_are_private_and_newest_first(
     client: AsyncClient, db_session: AsyncSession, clock
 ) -> None:
     ride = await finished_ride(client, db_session, clock, seconds=100)
+    hdrs = ride["_headers"]
+    await make_scooter(db_session, code="KG-B2")
+    booking = (
+        await client.post("/api/bookings", json={"scooter_code": "KG-B2"}, headers=hdrs)
+    ).json()
+    later = (
+        await client.post("/api/rides", json={"booking_id": booking["id"]}, headers=hdrs)
+    ).json()
+    clock.set(400)
+    await client.post(f"/api/rides/{later['id']}/finish", headers=hdrs)
     other = await make_user(db_session, "Other")
 
-    mine = (await client.get("/api/emails", headers=ride["_headers"])).json()
+    mine = (await client.get("/api/emails", headers=hdrs)).json()
     theirs = (await client.get("/api/emails", headers=headers(other))).json()
     anonymous = await client.get("/api/emails")
 
-    assert [e["dedup_key"] for e in mine] == [f"ride:{ride['id']}:receipt"]
+    assert [e["dedup_key"] for e in mine] == [
+        f"ride:{later['id']}:receipt",
+        f"ride:{ride['id']}:receipt",
+    ]
     assert theirs == []
     assert anonymous.status_code == 401
 

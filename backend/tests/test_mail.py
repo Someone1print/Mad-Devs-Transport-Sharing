@@ -26,6 +26,18 @@ async def test_send_email_stores_the_message_for_the_user(db_session: AsyncSessi
     assert email.created_at is not None
 
 
+def test_address_local_part_is_bounded_for_any_64_char_name() -> None:
+    # «щ» is the widest expansion (4 letters): 64 of them would be 256 characters unbounded
+    address = address_for("щ" * 64)
+
+    local_part, domain = address.split("@")
+    assert domain == "example.invalid"
+    assert len(local_part) == 64
+    assert len(address) <= 255  # the column
+    assert address_for("a-" * 40).endswith("@example.invalid")  # a cut never ends in a dash
+    assert not address_for("a-" * 40).split("@")[0].endswith("-")
+
+
 async def test_second_send_with_the_same_key_creates_nothing(db_session: AsyncSession) -> None:
     user = await make_user(db_session)
     first = await send_email(db_session, user, "A", "first", dedup_key="k")
