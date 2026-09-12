@@ -10,14 +10,17 @@ from app.schemas.scooter import TelemetryIn
 def status_after_telemetry(current: ScooterStatus, battery: int, threshold: int) -> ScooterStatus:
     """Business rule for the battery level reported by telemetry.
 
-    A battery strictly below the threshold always makes the scooter unavailable. A scooter that
-    was unavailable and now reports a healthy battery becomes available again (there is no
-    separate "reason" for unavailability yet). Reserved and riding scooters keep their status
+    A scooter in a ride keeps `riding` whatever the battery says (the rule is applied when the
+    ride finishes). Otherwise a battery strictly below the threshold makes the scooter
+    unavailable, and an unavailable scooter with a healthy battery becomes available again
+    (there is no separate "reason" for unavailability yet). Reserved scooters keep their status
     while the battery is healthy.
     """
-    # TODO(rides): a scooter that runs low *during a ride* must not just flip to unavailable:
-    # the assignment requires finishing the ride (bill + e-mail to the rider) first. Until the
-    # ride flow exists, telemetry below the threshold overrides reserved/riding as well.
+    if current is ScooterStatus.RIDING:
+        # A ride in progress owns the scooter: telemetry only records the battery. The battery
+        # rule is applied once, when the ride finishes (services.rides.finish_ride).
+        # TODO(rides): auto-finish the ride with a bill and an e-mail when the battery runs out.
+        return current
     if battery < threshold:
         return ScooterStatus.UNAVAILABLE
     if current is ScooterStatus.UNAVAILABLE:
@@ -33,7 +36,11 @@ async def apply_telemetry(
     session: AsyncSession, telemetry: TelemetryIn, threshold: int
 ) -> Scooter | None:
     """Store the reported position and battery; returns None if the code is unknown."""
-    scooter = await session.scalar(select(Scooter).where(Scooter.code == telemetry.code))
+    # FOR UPDATE: a ride transition may hold this row; wait for it and read the committed
+    # status instead of overwriting it with a stale one (lost update).
+    scooter = await session.scalar(
+        select(Scooter).where(Scooter.code == telemetry.code).with_for_update()
+    )
     if scooter is None:
         return None
 

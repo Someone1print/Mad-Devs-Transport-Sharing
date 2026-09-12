@@ -30,6 +30,11 @@ def upgrade() -> None:
     # is not used in the same transaction.
     op.execute("ALTER TYPE booking_status ADD VALUE IF NOT EXISTS 'used'")
 
+    op.add_column(
+        "scooters",
+        sa.Column("paused", sa.Boolean(), server_default=sa.false(), nullable=False),
+    )
+
     op.create_table(
         "service_zones",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -64,6 +69,9 @@ def upgrade() -> None:
             sa.DateTime(timezone=True),
             server_default=sa.text("clock_timestamp()"),
             nullable=False,
+        ),
+        sa.CheckConstraint(
+            "total_cost = ride_cost + pause_cost", name=op.f("ck_rides_receipt_adds_up")
         ),
         sa.ForeignKeyConstraint(
             ["booking_id"], ["bookings.id"], name=op.f("fk_rides_booking_id_bookings")
@@ -127,6 +135,7 @@ def downgrade() -> None:
     RIDE_STATUS.drop(op.get_bind(), checkfirst=False)
     SEGMENT_KIND.drop(op.get_bind(), checkfirst=False)
     op.drop_table("service_zones")
+    op.drop_column("scooters", "paused")
 
     # PostgreSQL cannot remove an enum value: rebuild booking_status without 'used'.
     # Bookings that were converted into rides are recorded as expired afterwards.

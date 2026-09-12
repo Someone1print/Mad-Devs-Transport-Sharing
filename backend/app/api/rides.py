@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -16,6 +17,7 @@ from app.services import rides as ride_service
 from app.services.rides import RideError, Tariff
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 
@@ -84,6 +86,9 @@ async def resume_ride(ride_id: int, user: CurrentUser, session: DbSession) -> Ri
 async def finish_ride(ride_id: int, user: CurrentUser, session: DbSession) -> RideOut:
     """409 outside_service_zone when the scooter is not inside any zone; idempotent when done."""
     zones = [z.as_points() for z in (await session.scalars(select(ServiceZone))).all()]
+    if not zones:
+        # fail closed (no ride can end) but say why: the seed should have inserted a zone
+        logger.warning("No service zones configured: every finish will be refused")
     try:
         ride, finished_now = await ride_service.finish_ride(
             session, user.id, ride_id, zones, settings.low_battery_threshold, clock.now()

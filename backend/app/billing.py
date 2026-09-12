@@ -8,7 +8,7 @@ sum of its segment costs, so the breakdown always adds up to the total.
 import enum
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 CURRENCY = "KGS"  # Kyrgyz som
@@ -51,7 +51,7 @@ def duration_seconds(started_at: datetime, ended_at: datetime) -> int:
     """Whole seconds between two instants; the fractional second is not billed."""
     if ended_at < started_at:
         raise ValueError("a segment cannot end before it starts")
-    return int((ended_at - started_at).total_seconds())
+    return (ended_at - started_at) // timedelta(seconds=1)
 
 
 def bill(segments: Iterable[Segment], ride_rate: Decimal, pause_rate: Decimal) -> Receipt:

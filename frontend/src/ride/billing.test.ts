@@ -24,6 +24,11 @@ const VECTORS: Array<[string, number, string]> = [
   ['7.50', 1, '0.13'],
   ['0.01', 1, '0.00'],
   ['0.01', 30, '0.01'],
+  // ties and near-ties that a wrong evaluation order or a float rate would get wrong
+  ['1.50', 11, '0.28'],
+  ['2.45', 30, '1.23'],
+  ['1.15', 30, '0.58'],
+  ['0.29', 60, '0.29'],
 ]
 
 describe('segmentCostKopecks', () => {
@@ -35,6 +40,8 @@ describe('segmentCostKopecks', () => {
     expect(parseMoney('5.00')).toBe(500)
     expect(parseMoney('0.08')).toBe(8)
     expect(parseMoney('12')).toBe(1200)
+    expect(parseMoney('1.15')).toBe(115) // Number('1.15') * 100 would give 114.99999999999999
+    expect(parseMoney('0.5')).toBe(50)
     expect(formatMoney(1419)).toBe('14.19')
     expect(formatMoney(5)).toBe('0.05')
   })

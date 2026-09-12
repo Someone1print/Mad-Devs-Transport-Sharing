@@ -87,7 +87,14 @@ def _open_segment(ride: Ride) -> RideSegment:
     return segment
 
 
-def _close_segment(ride: Ride, segment: RideSegment, now: datetime) -> None:
+def _close_segment(ride: Ride, segment: RideSegment, now: datetime) -> datetime:
+    """Close the open segment at `now`, clamped so the timeline never runs backwards.
+
+    `now` is sampled before the row lock; a request that lost the lock race may carry a time
+    earlier than the segment it is closing. Clamping bills a zero-second segment instead of
+    failing (or billing a negative amount). Returns the effective time.
+    """
+    now = max(now, segment.started_at)
     rate = (
         ride.ride_rate_per_minute
         if segment.kind is SegmentKind.RIDE
@@ -96,6 +103,7 @@ def _close_segment(ride: Ride, segment: RideSegment, now: datetime) -> None:
     segment.ended_at = now
     segment.seconds = duration_seconds(segment.started_at, now)
     segment.cost = segment_cost(rate, segment.seconds)
+    return now
 
 
 async def _reload(session: AsyncSession, ride_id: int) -> Ride:
@@ -128,10 +136,10 @@ async def start_ride(
         if existing is not None and existing.status in UNFINISHED:
             return existing, False
         raise RideConflictError("booking_used", "This booking has already been used for a ride")
-    if booking.status is not BookingStatus.ACTIVE:
-        raise RideConflictError(
-            "booking_not_active", f"Booking is {booking.status.value}, book the scooter again"
-        )
+    if booking.status is not BookingStatus.ACTIVE or booking.expires_at <= now:
+        # an expired booking the sweeper has not swept yet counts as expired already
+        state = "expired" if booking.status is BookingStatus.ACTIVE else booking.status.value
+        raise RideConflictError("booking_not_active", f"Booking is {state}, book the scooter again")
     if await get_active_ride(session, user_id) is not None:
         raise RideConflictError("user_has_active_ride", "You already have a ride in progress")
 
@@ -169,9 +177,11 @@ async def pause_ride(session: AsyncSession, user_id: int, ride_id: int, now: dat
         raise RideConflictError("ride_finished", "This ride is already finished")
     if ride.status is RideStatus.PAUSED:
         return ride
-    _close_segment(ride, _open_segment(ride), now)
+    scooter = await _locked_scooter(session, ride.scooter_id)
+    now = _close_segment(ride, _open_segment(ride), now)
     ride.segments.append(RideSegment(kind=SegmentKind.PAUSE, started_at=now))
     ride.status = RideStatus.PAUSED
+    scooter.paused = True
     await session.commit()
     return await _reload(session, ride_id)
 
@@ -182,9 +192,11 @@ async def resume_ride(session: AsyncSession, user_id: int, ride_id: int, now: da
         raise RideConflictError("ride_finished", "This ride is already finished")
     if ride.status is RideStatus.ACTIVE:
         return ride
-    _close_segment(ride, _open_segment(ride), now)
+    scooter = await _locked_scooter(session, ride.scooter_id)
+    now = _close_segment(ride, _open_segment(ride), now)
     ride.segments.append(RideSegment(kind=SegmentKind.RIDE, started_at=now))
     ride.status = RideStatus.ACTIVE
+    scooter.paused = False
     await session.commit()
     return await _reload(session, ride_id)
 
@@ -210,10 +222,10 @@ async def finish_ride(
     if not any(point_in_polygon(position, zone) for zone in zones):
         raise RideConflictError(
             "outside_service_zone",
-            "Вы вне зоны обслуживания, вернитесь в зону, чтобы завершить поездку",
+            "The scooter is outside the service zone; return inside it to finish the ride",
         )
 
-    _close_segment(ride, _open_segment(ride), now)
+    now = _close_segment(ride, _open_segment(ride), now)
     receipt = bill(
         [Segment(s.kind, s.seconds or 0) for s in ride.segments],
         ride.ride_rate_per_minute,
@@ -229,5 +241,6 @@ async def finish_ride(
     scooter.status = status_after_telemetry(
         ScooterStatus.AVAILABLE, scooter.battery, low_battery_threshold
     )
+    scooter.paused = False
     await session.commit()
     return await _reload(session, ride_id), True

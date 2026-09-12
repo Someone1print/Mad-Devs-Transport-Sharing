@@ -3,18 +3,17 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
     Index,
     Integer,
     Numeric,
-    exists,
     func,
-    select,
     text,
 )
-from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.billing import SegmentKind
 from app.db.base import Base
@@ -43,6 +42,8 @@ class Ride(Base):
 
     __tablename__ = "rides"
     __table_args__ = (
+        # the stored receipt can only ever be a consistent breakdown
+        CheckConstraint("total_cost = ride_cost + pause_cost", name="receipt_adds_up"),
         Index(
             "uq_rides_unfinished_user",
             "user_id",
@@ -108,13 +109,3 @@ class RideSegment(Base):
     cost: Mapped[Decimal | None] = mapped_column(MONEY)
 
     ride: Mapped[Ride] = relationship(back_populates="segments")
-
-
-# Derived flag loaded with every Scooter: is there a paused ride on it right now?
-# Declared here because it needs the Ride mapping, which itself imports Scooter.
-Scooter.paused = column_property(
-    select(exists().where(Ride.scooter_id == Scooter.id, Ride.status == RideStatus.PAUSED))
-    .correlate_except(Ride)
-    .scalar_subquery(),
-    deferred=False,
-)

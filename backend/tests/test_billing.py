@@ -38,6 +38,11 @@ PAUSE = Decimal("1.50")
         (Decimal("7.50"), 1, "0.13"),  # 0.125 → half-up
         (Decimal("0.01"), 1, "0.00"),  # 0.000166… → rounds away entirely
         (Decimal("0.01"), 30, "0.01"),  # 0.005 → half-up
+        # ties and near-ties that a wrong evaluation order or a float rate would get wrong
+        (PAUSE, 11, "0.28"),  # 0.275 → half-up
+        (Decimal("2.45"), 30, "1.23"),  # 1.225 → half-up
+        (Decimal("1.15"), 30, "0.58"),  # 0.575 → half-up; 1.15*100 is not an exact float
+        (Decimal("0.29"), 60, "0.29"),
     ],
 )
 def test_segment_cost_vectors(rate: Decimal, seconds: int, expected: str) -> None:

@@ -179,7 +179,7 @@ async def test_finish_outside_zone_returns_409_with_a_clear_message(
     assert response.status_code == 409
     detail = response.json()["detail"]
     assert detail["code"] == "outside_service_zone"
-    assert "вне зоны обслуживания" in detail["message"]
+    assert "outside the service zone" in detail["message"]
     assert (await client.get("/api/rides/active", headers=hdrs)).json()["status"] == "active"
 
 

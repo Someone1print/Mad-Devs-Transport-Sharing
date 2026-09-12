@@ -33,8 +33,14 @@ class Settings(BaseSettings):
     booking_sweeper_enabled: bool = True
 
     # Ride tariffs per minute, in som. Decimal end to end: never a float.
-    ride_rate_per_minute: Decimal = Field(default=Decimal("5.00"), ge=0, decimal_places=2)
-    pause_rate_per_minute: Decimal = Field(default=Decimal("1.50"), ge=0, decimal_places=2)
+    # Bounds match the NUMERIC(8,2) snapshot on rides: a value the database could not store
+    # exactly is refused at startup, not at ride start.
+    ride_rate_per_minute: Decimal = Field(
+        default=Decimal("5.00"), ge=0, le=Decimal("9999.99"), max_digits=8, decimal_places=2
+    )
+    pause_rate_per_minute: Decimal = Field(
+        default=Decimal("1.50"), ge=0, le=Decimal("9999.99"), max_digits=8, decimal_places=2
+    )
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432

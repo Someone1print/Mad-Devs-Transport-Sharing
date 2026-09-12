@@ -9,12 +9,7 @@ THRESHOLD = 15
 
 @pytest.mark.parametrize(
     "current",
-    [
-        ScooterStatus.AVAILABLE,
-        ScooterStatus.RESERVED,
-        ScooterStatus.RIDING,
-        ScooterStatus.UNAVAILABLE,
-    ],
+    [ScooterStatus.AVAILABLE, ScooterStatus.RESERVED, ScooterStatus.UNAVAILABLE],
 )
 def test_battery_below_threshold_makes_scooter_unavailable(current: ScooterStatus) -> None:
     assert (
