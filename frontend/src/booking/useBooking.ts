@@ -16,6 +16,8 @@ export interface BookingActions {
   busy: boolean
   book: (scooterCode: string) => Promise<void>
   cancel: () => Promise<void>
+  /** Forget the booking locally (it was converted into a ride on the server). */
+  clear: () => void
   handleEvent: (event: BookingEvent) => void
 }
 
@@ -153,5 +155,7 @@ export function useBooking({ userId, notify }: UseBookingOptions): BookingAction
     }
   }, [userId, active, notify, refresh, setActive])
 
-  return { active, busy, book, cancel, handleEvent }
+  const clear = useCallback(() => setActive(null), [setActive])
+
+  return { active, busy, book, cancel, clear, handleEvent }
 }

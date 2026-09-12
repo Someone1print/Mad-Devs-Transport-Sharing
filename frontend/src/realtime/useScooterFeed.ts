@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { fetchScooters, realtimeUrl } from '../api/scooters'
-import { isBookingEvent, type BookingEvent, type RealtimeEvent } from '../api/types'
+import {
+  isBookingEvent,
+  isRideEvent,
+  type BookingEvent,
+  type RealtimeEvent,
+  type RideEvent,
+} from '../api/types'
 import { applyScooter, applyScooters, emptyStore, type ScooterStore } from './scooterStore'
 
 export type ConnectionState = 'connecting' | 'live' | 'reconnecting'
@@ -15,6 +21,7 @@ interface FeedOptions {
   /** Once known, the socket identifies itself so personal booking events can be delivered. */
   userId: number | null
   onBookingEvent?: (event: BookingEvent) => void
+  onRideEvent?: (event: RideEvent) => void
 }
 
 const MAX_RECONNECT_DELAY_MS = 15_000
@@ -30,16 +37,18 @@ function identify(socket: WebSocket | null, userId: number | null): void {
  * list, so nothing published in between is lost (stale data is dropped by `updated_at`).
  * Reconnects with exponential backoff and reloads the list after every reconnect.
  */
-export function useScooterFeed({ userId, onBookingEvent }: FeedOptions): ScooterFeed {
+export function useScooterFeed({ userId, onBookingEvent, onRideEvent }: FeedOptions): ScooterFeed {
   const [scooters, setScooters] = useState<ScooterStore>(emptyStore)
   const [connection, setConnection] = useState<ConnectionState>('connecting')
   const socketRef = useRef<WebSocket | null>(null)
   const userIdRef = useRef(userId)
   const onBookingEventRef = useRef(onBookingEvent)
+  const onRideEventRef = useRef(onRideEvent)
   useEffect(() => {
     userIdRef.current = userId
     onBookingEventRef.current = onBookingEvent
-  }, [userId, onBookingEvent])
+    onRideEventRef.current = onRideEvent
+  }, [userId, onBookingEvent, onRideEvent])
 
   useEffect(() => {
     let disposed = false
@@ -72,6 +81,8 @@ export function useScooterFeed({ userId, onBookingEvent }: FeedOptions): Scooter
           setScooters((store) => applyScooter(store, event.scooter))
         } else if (isBookingEvent(event)) {
           onBookingEventRef.current?.(event)
+        } else if (isRideEvent(event)) {
+          onRideEventRef.current?.(event)
         }
       }
       socket.onerror = () => socket.close()

@@ -13,6 +13,7 @@ interface ScooterMarkersProps {
   ttlMinutes: number
   onBook: (scooterCode: string) => void
   onCancel: () => void
+  onStart: () => void
 }
 
 interface PopupActionsProps extends Omit<ScooterMarkersProps, 'scooters'> {
@@ -20,7 +21,7 @@ interface PopupActionsProps extends Omit<ScooterMarkersProps, 'scooters'> {
 }
 
 function PopupActions(props: PopupActionsProps) {
-  const { scooter, myBooking, now, canBook, busy, ttlMinutes, onBook, onCancel } = props
+  const { scooter, myBooking, now, canBook, busy, ttlMinutes, onBook, onCancel, onStart } = props
   const mine = myBooking !== null && myBooking.scooter_code === scooter.code
 
   if (mine && myBooking) {
@@ -29,6 +30,9 @@ function PopupActions(props: PopupActionsProps) {
         <div className="popup-actions__note">
           Ваша бронь · осталось {formatRemaining(remainingSeconds(myBooking, now))}
         </div>
+        <button type="button" className="btn btn--primary" disabled={busy} onClick={onStart}>
+          Начать поездку
+        </button>
         <button type="button" className="btn btn--ghost" disabled={busy} onClick={onCancel}>
           Отменить бронь
         </button>
@@ -55,6 +59,13 @@ function PopupActions(props: PopupActionsProps) {
   }
   if (scooter.status === 'reserved') {
     return <div className="popup-actions__note">Забронирован другим пользователем</div>
+  }
+  if (scooter.status === 'riding') {
+    return (
+      <div className="popup-actions__note">
+        {scooter.paused ? 'В поездке · пауза' : 'В поездке'}
+      </div>
+    )
   }
   return null
 }
