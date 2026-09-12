@@ -66,6 +66,15 @@ export interface Ride {
   receipt: Receipt | null
 }
 
+export interface Email {
+  id: number
+  to_address: string
+  subject: string
+  body: string
+  dedup_key: string
+  created_at: string
+}
+
 export interface ZonePoint {
   lat: number
   lon: number
@@ -123,7 +132,12 @@ export interface RideEvent {
   ride: Ride
 }
 
-export type RealtimeEvent = ScooterUpdatedEvent | BookingEvent | RideEvent
+export interface EmailSentEvent {
+  type: 'email.sent'
+  email: Email
+}
+
+export type RealtimeEvent = ScooterUpdatedEvent | BookingEvent | RideEvent | EmailSentEvent
 
 export function isBookingEvent(event: RealtimeEvent): event is BookingEvent {
   return event.type.startsWith('booking.')
