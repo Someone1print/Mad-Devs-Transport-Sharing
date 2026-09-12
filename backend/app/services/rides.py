@@ -26,7 +26,7 @@ from app.models import (
     ScooterStatus,
     User,
 )
-from app.services.scooters import status_after_telemetry
+from app.services.scooters import release_status
 
 UNFINISHED = (RideStatus.ACTIVE, RideStatus.PAUSED)
 
@@ -74,8 +74,14 @@ async def _locked_ride(session: AsyncSession, user_id: int, ride_id: int) -> Rid
 
 
 async def _locked_scooter(session: AsyncSession, scooter_id: int) -> Scooter:
+    # populate_existing: the scooter is usually already in the identity map (joined-loaded with
+    # the ride or the booking) from BEFORE this lock; re-read it so position, battery and
+    # status are the ones committed by whoever held the lock until now (e.g. telemetry).
     scooter = await session.scalar(
-        select(Scooter).where(Scooter.id == scooter_id).with_for_update()
+        select(Scooter)
+        .where(Scooter.id == scooter_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     assert scooter is not None  # foreign key guarantees the row exists
     return scooter
@@ -120,7 +126,12 @@ async def _reload(session: AsyncSession, ride_id: int) -> Ride:
 
 
 async def start_ride(
-    session: AsyncSession, user_id: int, booking_id: int, tariff: Tariff, now: datetime
+    session: AsyncSession,
+    user_id: int,
+    booking_id: int,
+    tariff: Tariff,
+    now: datetime,
+    low_battery_threshold: int = 0,
 ) -> tuple[Ride, bool]:
     """Turn the user's active booking into a ride. Returns (ride, created).
 
@@ -152,6 +163,11 @@ async def start_ride(
     if scooter.status is not ScooterStatus.RESERVED:
         raise RideConflictError(
             "scooter_not_available", f"Scooter {scooter.code} is {scooter.status.value}"
+        )
+    if scooter.battery < low_battery_threshold:
+        raise RideConflictError(
+            "scooter_battery_low",
+            f"Scooter {scooter.code} has {scooter.battery}% battery, too low to start a ride",
         )
 
     ride = Ride(
@@ -243,9 +259,7 @@ async def finish_ride(
     ride.total_cost = receipt.total_cost
     ride.finished_at = now
     ride.status = RideStatus.FINISHED
-    scooter.status = status_after_telemetry(
-        ScooterStatus.AVAILABLE, scooter.battery, low_battery_threshold
-    )
+    scooter.status = release_status(scooter.battery, low_battery_threshold)
     scooter.paused = False
     await session.commit()
     return await _reload(session, ride_id), True

@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Booking, BookingStatus, Ride, RideStatus, Scooter, ScooterStatus, User
+from app.services.scooters import release_status
 
 
 class BookingError(Exception):
@@ -89,7 +90,7 @@ async def create_booking(
 
 
 async def cancel_booking(
-    session: AsyncSession, user_id: int, booking_id: int, now: datetime
+    session: AsyncSession, user_id: int, booking_id: int, now: datetime, low_battery_threshold: int
 ) -> Booking:
     """Cancel the caller's active booking and free the scooter.
 
@@ -106,13 +107,18 @@ async def cancel_booking(
     if booking.status is not BookingStatus.ACTIVE:
         raise BookingConflictError("booking_not_active", "This booking is no longer active")
 
+    # populate_existing: the scooter was joined-loaded with the booking before this lock;
+    # re-read it under the lock instead of keeping that pre-lock snapshot
     scooter = await session.scalar(
-        select(Scooter).where(Scooter.id == booking.scooter_id).with_for_update()
+        select(Scooter)
+        .where(Scooter.id == booking.scooter_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     booking.status = BookingStatus.CANCELLED
     booking.ended_at = now
     if scooter is not None and scooter.status is ScooterStatus.RESERVED:
-        scooter.status = ScooterStatus.AVAILABLE
+        scooter.status = release_status(scooter.battery, low_battery_threshold)
     await session.commit()
     await session.refresh(booking)
     return booking

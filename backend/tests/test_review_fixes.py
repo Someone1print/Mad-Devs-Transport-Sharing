@@ -323,3 +323,109 @@ def test_tariff_settings_are_quantized_to_kopecks(monkeypatch: pytest.MonkeyPatc
 
     assert str(settings.ride_rate_per_minute) == "5.00"
     assert str(settings.pause_rate_per_minute) == "1.50"
+
+
+# --- 12. locks re-read the row: a scooter loaded through a join before the lock is stale ---
+
+
+async def test_finish_uses_the_position_committed_while_it_waited_for_the_lock(
+    committed_db: async_sessionmaker[AsyncSession],
+) -> None:
+    """The ride's scooter is joined-loaded before the scooter lock; the lock must re-read it."""
+    from sqlalchemy import select
+
+    from app.seed import seed_zones
+
+    async with committed_db() as session:
+        await seed_zones(session)
+        user_id, scooter_id, booking_id = await booked(session)
+        await place(session, scooter_id, INSIDE)
+        ride, _ = await ride_service.start_ride(session, user_id, booking_id, TARIFF, at(0))
+        ride_id = ride.id
+
+    async with committed_db() as finishing, committed_db() as telemetry:
+        # the finishing request has already loaded the ride (and its scooter, inside the zone)
+        loaded = await finishing.scalar(select(Ride).where(Ride.id == ride_id))
+        assert loaded is not None and loaded.scooter.lat == INSIDE[0]
+        # meanwhile the scooter drives out of the zone and that telemetry commits
+        moving = await telemetry.get(Scooter, scooter_id)
+        assert moving is not None
+        moving.lat, moving.lon = (42.8500, 74.6000)
+        await telemetry.commit()
+
+        with pytest.raises(RideConflictError) as exc:
+            await ride_service.finish_ride(finishing, user_id, ride_id, ZONES, THRESHOLD, at(60))
+
+    assert exc.value.code == "outside_service_zone"
+
+
+# --- 13. held scooters (reserved or riding) keep their status; the battery rule applies at
+# release points and at ride start ---
+
+
+@pytest.mark.parametrize("battery", [0, 14, 15, 90])
+def test_reserved_is_sticky_against_telemetry(battery: int) -> None:
+    assert (
+        status_after_telemetry(ScooterStatus.RESERVED, battery, THRESHOLD) is ScooterStatus.RESERVED
+    )
+
+
+async def test_start_refuses_a_reserved_scooter_with_a_flat_battery(
+    db_session: AsyncSession,
+) -> None:
+    user_id, scooter_id, booking_id = await booked(db_session)
+    scooter = await db_session.get(Scooter, scooter_id)
+    assert scooter is not None
+    scooter.battery = 5  # drained while reserved; status stayed reserved
+    await db_session.commit()
+
+    with pytest.raises(RideConflictError) as exc:
+        await ride_service.start_ride(
+            db_session, user_id, booking_id, TARIFF, at(0), low_battery_threshold=THRESHOLD
+        )
+
+    assert exc.value.code == "scooter_battery_low"
+    db_session.expire_all()
+    booking = await db_session.get(Booking, booking_id)
+    assert booking is not None and booking.status is BookingStatus.ACTIVE  # cancel is possible
+
+
+async def test_cancel_releases_a_flat_scooter_as_unavailable(db_session: AsyncSession) -> None:
+    from app.services.bookings import cancel_booking
+
+    user_id, scooter_id, booking_id = await booked(db_session)
+    scooter = await db_session.get(Scooter, scooter_id)
+    assert scooter is not None
+    scooter.battery = 5
+    await db_session.commit()
+
+    await cancel_booking(db_session, user_id, booking_id, at(10), low_battery_threshold=THRESHOLD)
+
+    db_session.expire_all()
+    scooter = await db_session.get(Scooter, scooter_id)
+    assert scooter is not None and scooter.status is ScooterStatus.UNAVAILABLE
+
+
+async def test_sweeper_releases_a_flat_scooter_as_unavailable(db_session: AsyncSession) -> None:
+    from datetime import timedelta as td
+
+    from app.realtime.hub import ScooterHub
+    from app.services.booking_sweeper import sweep_bookings
+
+    _user_id, scooter_id, _booking_id = await booked(db_session)  # expires at T0 + 15 min
+    scooter = await db_session.get(Scooter, scooter_id)
+    assert scooter is not None
+    scooter.battery = 5
+    await db_session.commit()
+
+    await sweep_bookings(
+        db_session,
+        ScooterHub(),
+        now=T0 + td(minutes=16),
+        warn_before=td(minutes=3),
+        low_battery_threshold=THRESHOLD,
+    )
+
+    db_session.expire_all()
+    scooter = await db_session.get(Scooter, scooter_id)
+    assert scooter is not None and scooter.status is ScooterStatus.UNAVAILABLE

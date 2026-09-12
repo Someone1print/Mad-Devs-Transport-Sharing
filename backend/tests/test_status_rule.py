@@ -7,10 +7,7 @@ from app.services.scooters import status_after_telemetry
 THRESHOLD = 15
 
 
-@pytest.mark.parametrize(
-    "current",
-    [ScooterStatus.AVAILABLE, ScooterStatus.RESERVED, ScooterStatus.UNAVAILABLE],
-)
+@pytest.mark.parametrize("current", [ScooterStatus.AVAILABLE, ScooterStatus.UNAVAILABLE])
 def test_battery_below_threshold_makes_scooter_unavailable(current: ScooterStatus) -> None:
     assert (
         status_after_telemetry(current, battery=14, threshold=THRESHOLD)

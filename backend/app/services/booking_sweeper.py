@@ -19,6 +19,7 @@ from app.models import Booking, BookingStatus, Scooter, ScooterStatus
 from app.realtime.hub import ScooterHub, booking_event, scooter_updated_event
 from app.schemas.booking import BookingOut
 from app.schemas.scooter import ScooterOut
+from app.services.scooters import release_status
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,9 @@ class SweepResult:
     warned: list[Booking] = field(default_factory=list)
 
 
-async def _expire_overdue(session: AsyncSession, now: datetime) -> list[Booking]:
+async def _expire_overdue(
+    session: AsyncSession, now: datetime, low_battery_threshold: int
+) -> list[Booking]:
     """Mark active bookings past `expires_at` as expired and free their scooters."""
     overdue = (
         (
@@ -48,10 +51,13 @@ async def _expire_overdue(session: AsyncSession, now: datetime) -> list[Booking]
         booking.status = BookingStatus.EXPIRED
         booking.ended_at = now
         scooter = await session.scalar(
-            select(Scooter).where(Scooter.id == booking.scooter_id).with_for_update()
+            select(Scooter)
+            .where(Scooter.id == booking.scooter_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if scooter is not None and scooter.status is ScooterStatus.RESERVED:
-            scooter.status = ScooterStatus.AVAILABLE
+            scooter.status = release_status(scooter.battery, low_battery_threshold)
     await session.commit()
     for booking in overdue:
         await session.refresh(booking)
@@ -89,11 +95,15 @@ async def _warn_expiring(
 
 
 async def sweep_bookings(
-    session: AsyncSession, hub: ScooterHub, now: datetime, warn_before: timedelta
+    session: AsyncSession,
+    hub: ScooterHub,
+    now: datetime,
+    warn_before: timedelta,
+    low_battery_threshold: int,
 ) -> SweepResult:
     """One maintenance pass: expire overdue bookings, then warn about the ones expiring soon."""
     result = SweepResult(
-        expired=await _expire_overdue(session, now),
+        expired=await _expire_overdue(session, now, low_battery_threshold),
         warned=await _warn_expiring(session, now, warn_before),
     )
     for booking in result.expired:
@@ -119,6 +129,7 @@ async def run_booking_sweeper(
     hub: ScooterHub,
     interval: float,
     warn_before: timedelta,
+    low_battery_threshold: int,
     stop: asyncio.Event | None = None,
 ) -> None:
     """Run `sweep_bookings` every `interval` seconds until `stop` is set (forever if None).
@@ -129,7 +140,9 @@ async def run_booking_sweeper(
     while not stop.is_set():
         try:
             async with session_factory() as session:
-                await sweep_bookings(session, hub, datetime.now(UTC), warn_before)
+                await sweep_bookings(
+                    session, hub, datetime.now(UTC), warn_before, low_battery_threshold
+                )
         except Exception:
             logger.exception("Booking sweep failed; will retry")
         with contextlib.suppress(TimeoutError):

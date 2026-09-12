@@ -6,19 +6,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Scooter, ScooterStatus
 from app.schemas.scooter import TelemetryIn
 
+# Statuses in which a user holds the scooter; telemetry never changes them.
+HELD = (ScooterStatus.RESERVED, ScooterStatus.RIDING)
+
+
+def release_status(battery: int, threshold: int) -> ScooterStatus:
+    """Status of a scooter a user just let go of: available unless the battery is flat."""
+    return ScooterStatus.UNAVAILABLE if battery < threshold else ScooterStatus.AVAILABLE
+
 
 def status_after_telemetry(current: ScooterStatus, battery: int, threshold: int) -> ScooterStatus:
     """Business rule for the battery level reported by telemetry.
 
-    A scooter in a ride keeps `riding` whatever the battery says (the rule is applied when the
-    ride finishes). Otherwise a battery strictly below the threshold makes the scooter
-    unavailable, and an unavailable scooter with a healthy battery becomes available again
-    (there is no separate "reason" for unavailability yet). Reserved scooters keep their status
-    while the battery is healthy.
+    A held scooter (reserved or in a ride) keeps its status whatever the battery says: the
+    rule is applied when the hold is released (cancel, expiry, finish) and when a ride starts.
+    Otherwise a battery strictly below the threshold makes the scooter unavailable, and an
+    unavailable scooter with a healthy battery becomes available again (there is no separate
+    "reason" for unavailability yet).
     """
-    if current is ScooterStatus.RIDING:
-        # A ride in progress owns the scooter: telemetry only records the battery. The battery
-        # rule is applied once, when the ride finishes (services.rides.finish_ride).
+    if current in HELD:
+        # The user owns the scooter: telemetry only records the battery.
         # TODO(rides): auto-finish the ride with a bill and an e-mail when the battery runs out.
         return current
     if battery < threshold:

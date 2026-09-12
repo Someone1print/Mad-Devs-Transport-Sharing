@@ -48,7 +48,12 @@ async def start_ride(
     """201 with the new ride; 200 with the existing one when the booking's ride is already going."""
     try:
         ride, created = await ride_service.start_ride(
-            session, user.id, payload.booking_id, current_tariff(), clock.now()
+            session,
+            user.id,
+            payload.booking_id,
+            current_tariff(),
+            clock.now(),
+            low_battery_threshold=settings.low_battery_threshold,
         )
     except RideError as exc:
         raise http_error(exc) from exc
