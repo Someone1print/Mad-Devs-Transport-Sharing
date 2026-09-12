@@ -5,7 +5,7 @@ from enum import StrEnum
 from typing import Any
 
 from scootersim.config import Config
-from scootersim.geo import BISHKEK_BBOX, haversine_km, random_point, step_towards
+from scootersim.geo import BISHKEK_BBOX, RIDE_BBOX, haversine_km, random_point, step_towards
 
 
 class Phase(StrEnum):
@@ -24,7 +24,8 @@ class SimScooter:
     target: tuple[float, float] | None = None
     charging_until: float | None = None
     idle_ticks: int = 0
-    parked: bool = False  # reserved or ridden by a real user: never moved by the simulator
+    parked: bool = False  # reserved, or a paused user ride: never moved by the simulator
+    user_ride: bool = False  # a real user is riding it: keeps moving until the backend frees it
 
     @property
     def battery_percent(self) -> int:
@@ -49,8 +50,7 @@ class Fleet:
             for item in payload
         ]
         fleet = cls(scooters, config, rng)
-        for item in payload:
-            fleet.apply_server_status(item["code"], item.get("status", ""), now)
+        fleet.refresh_statuses(payload, now)
         return fleet
 
     def start_ride(self, scooter: SimScooter, target: tuple[float, float], now: float) -> None:
@@ -59,30 +59,49 @@ class Fleet:
         scooter.target = target
         scooter.idle_ticks = 0
 
-    def apply_server_status(self, code: str, status: str, now: float) -> None:
+    def _stop(self, scooter: SimScooter) -> None:
+        if scooter.phase is Phase.RIDING:
+            scooter.phase = Phase.IDLE
+            scooter.target = None
+
+    def apply_server_status(self, code: str, status: str, now: float, paused: bool = False) -> None:
         """React to the status the backend reports back after telemetry or in the list."""
         scooter = self._by_code.get(code)
         if scooter is None:
             return
         if status == "unavailable":
-            scooter.parked = False
+            scooter.parked = scooter.user_ride = False
             if scooter.phase is not Phase.CHARGING:
                 scooter.phase = Phase.CHARGING
                 scooter.target = None
                 scooter.charging_until = now + self.config.recharge_seconds
-        elif status in {"reserved", "riding"}:
+        elif status == "reserved":
             # someone holds the scooter: it stays where it is until the backend frees it
-            scooter.parked = True
-            if scooter.phase is Phase.RIDING:
-                scooter.phase = Phase.IDLE
-                scooter.target = None
+            scooter.parked, scooter.user_ride = True, False
+            self._stop(scooter)
+        elif status == "riding":
+            # a real user drives it: it keeps moving (inside the wider ride area) unless paused
+            scooter.user_ride = True
+            scooter.parked = paused
+            if paused:
+                self._stop(scooter)
+            elif scooter.phase is not Phase.RIDING and scooter.battery > 0.0:
+                self.start_ride(scooter, random_point(RIDE_BBOX, self.rng), now)
         elif status == "available":
-            scooter.parked = False
+            scooter.parked = scooter.user_ride = False
+            if scooter.phase is Phase.RIDING and scooter.target is not None:
+                # the user's ride ended: the demo target lies in the wider area, drop it
+                self._stop(scooter)
 
     def refresh_statuses(self, payload: list[dict[str, Any]], now: float) -> None:
         """Apply statuses from a fresh GET /api/scooters; unknown codes are ignored."""
         for item in payload:
-            self.apply_server_status(str(item.get("code", "")), str(item.get("status", "")), now)
+            self.apply_server_status(
+                str(item.get("code", "")),
+                str(item.get("status", "")),
+                now,
+                paused=bool(item.get("paused", False)),
+            )
 
     def tick(self, dt: float, now: float) -> list[SimScooter]:
         """Advance the simulation by `dt` seconds; returns scooters that must send telemetry."""
@@ -113,12 +132,16 @@ class Fleet:
         moved_km = haversine_km(scooter.lat, scooter.lon, lat, lon)
         scooter.lat, scooter.lon = lat, lon
         scooter.battery = max(0.0, scooter.battery - moved_km * self.config.drain_per_km)
-        if reached or scooter.battery <= 0.0:
-            scooter.phase = Phase.IDLE
-            scooter.target = None
+        if scooter.battery <= 0.0:
+            self._stop(scooter)
+        elif reached:
+            if scooter.user_ride:
+                scooter.target = random_point(RIDE_BBOX, self.rng)  # the user drives on
+            else:
+                self._stop(scooter)
 
     def _dispatch_rides(self, now: float) -> None:
-        riding = sum(scooter.phase is Phase.RIDING for scooter in self.scooters)
+        riding = sum(s.phase is Phase.RIDING and not s.user_ride for s in self.scooters)
         needed = self.config.active_scooters - riding
         if needed <= 0:
             return
@@ -127,6 +150,7 @@ class Fleet:
             for scooter in self.scooters
             if scooter.phase is Phase.IDLE
             and not scooter.parked
+            and not scooter.user_ride
             and scooter.battery >= self.config.min_ride_battery
         ]
         for scooter in self.rng.sample(candidates, min(needed, len(candidates))):

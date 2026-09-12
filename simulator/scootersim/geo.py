@@ -16,6 +16,10 @@ class BBox:
 # Central Bishkek: roughly 4.5 km north-south by 5.7 km east-west
 BISHKEK_BBOX = BBox(min_lat=42.855, max_lat=42.895, min_lon=74.565, max_lon=74.635)
 
+# Where user rides may wander: deliberately wider than the backend's service zone, so a ride
+# can end up outside it and the "finish only inside the zone" rule can be demonstrated.
+RIDE_BBOX = BBox(min_lat=42.850, max_lat=42.900, min_lon=74.560, max_lon=74.640)
+
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance between two points in kilometres."""
