@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from pydantic import Field, computed_field
+from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     postgres_user: str = "scooter"
     postgres_password: str = "scooter"
     postgres_db: str = "scooter"
+
+    @field_validator("ride_rate_per_minute", "pause_rate_per_minute")
+    @classmethod
+    def quantize_to_kopecks(cls, value: Decimal) -> Decimal:
+        """`5` in the environment is the same tariff as `5.00`; keep money at two places."""
+        return value.quantize(Decimal("0.01"))
 
     @computed_field  # type: ignore[prop-decorator]
     @property

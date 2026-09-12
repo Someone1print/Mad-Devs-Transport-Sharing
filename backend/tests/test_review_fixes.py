@@ -310,3 +310,16 @@ async def test_segment_seconds_sum_to_the_whole_ride_duration(db_session: AsyncS
 
     assert [s.seconds for s in finished.segments] == [10, 10, 10]
     assert finished.ride_seconds == 20 and finished.pause_seconds == 10
+
+
+# --- 11. tariffs are always two-decimal money, however they were typed in the environment ---
+
+
+def test_tariff_settings_are_quantized_to_kopecks(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RIDE_RATE_PER_MINUTE", "5")
+    monkeypatch.setenv("PAUSE_RATE_PER_MINUTE", "1.5")
+
+    settings = Settings(_env_file=None)
+
+    assert str(settings.ride_rate_per_minute) == "5.00"
+    assert str(settings.pause_rate_per_minute) == "1.50"
