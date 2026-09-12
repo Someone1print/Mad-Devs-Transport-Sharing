@@ -1,4 +1,5 @@
-"""Demo fleet for local runs: `python -m app.seed` inserts scooters into an empty table."""
+"""Demo data for local runs: `python -m app.seed` inserts the fleet and the service zone
+into empty tables."""
 
 import asyncio
 import logging
@@ -8,8 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.session import async_session_factory, engine
-from app.models import Scooter, ScooterStatus
+from app.models import Scooter, ScooterStatus, ServiceZone
 from app.services.scooters import status_after_telemetry
+from app.zones import BISHKEK_CENTER_ZONE
 
 logger = logging.getLogger(__name__)
 
@@ -56,17 +58,34 @@ async def seed_scooters(session: AsyncSession, threshold: int) -> int:
     return len(SEED_SCOOTERS)
 
 
+async def seed_zones(session: AsyncSession) -> int:
+    """Insert the built-in service zone if the table is empty. Returns the number inserted."""
+    existing = await session.scalar(select(func.count()).select_from(ServiceZone))
+    if existing:
+        return 0
+    session.add(
+        ServiceZone(
+            name=BISHKEK_CENTER_ZONE.name,
+            points=[{"lat": p.lat, "lon": p.lon} for p in BISHKEK_CENTER_ZONE.points],
+        )
+    )
+    await session.commit()
+    return 1
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
     try:
         async with async_session_factory() as session:
-            inserted = await seed_scooters(session, settings.low_battery_threshold)
+            scooters = await seed_scooters(session, settings.low_battery_threshold)
+            zones = await seed_zones(session)
     finally:
         await engine.dispose()
-    if inserted:
-        logger.info("Inserted %d demo scooters", inserted)
-    else:
-        logger.info("Scooters table is not empty, nothing to seed")
+    logger.info(
+        "Seed: %s, %s",
+        f"inserted {scooters} demo scooters" if scooters else "scooters table not empty",
+        f"inserted {zones} service zone" if zones else "service zones already present",
+    )
 
 
 if __name__ == "__main__":
