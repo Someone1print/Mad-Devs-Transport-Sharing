@@ -1,0 +1,105 @@
+{
+ "$comment": "Hand-written contract for the e-mail format check: the same `problem` key must come out of backend/app/services/mail.py (email_problem) and frontend/src/account/email.ts (emailProblem). Checked by backend/tests/test_email_format.py and frontend/src/account/email.test.ts. Format only: existence is never checked. Lengths count code points (254 fits, 255 does not).",
+ "cases": [
+  {
+   "value": "aibek@example.com",
+   "problem": null
+  },
+  {
+   "value": "first.last+tag@sub.example.org",
+   "problem": null
+  },
+  {
+   "value": "a@b.co",
+   "problem": null
+  },
+  {
+   "value": "UPPER@EXAMPLE.KG",
+   "problem": null
+  },
+  {
+   "value": "айбек@пример.рф",
+   "problem": null
+  },
+  {
+   "value": "x@y.z",
+   "problem": null
+  },
+  {
+   "value": "😀@example.com",
+   "problem": null
+  },
+  {
+   "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@example.com",
+   "problem": null
+  },
+  {
+   "value": "",
+   "problem": "at_sign"
+  },
+  {
+   "value": "aibek",
+   "problem": "at_sign"
+  },
+  {
+   "value": "aibek@@example.com",
+   "problem": "at_sign"
+  },
+  {
+   "value": "a@b@c.com",
+   "problem": "at_sign"
+  },
+  {
+   "value": "@example.com",
+   "problem": "local_part"
+  },
+  {
+   "value": "aibek@",
+   "problem": "domain"
+  },
+  {
+   "value": "aibek@example",
+   "problem": "domain"
+  },
+  {
+   "value": "aibek@.example.com",
+   "problem": "domain"
+  },
+  {
+   "value": "aibek@example.com.",
+   "problem": "domain"
+  },
+  {
+   "value": "aibek@exa..mple.com",
+   "problem": "domain"
+  },
+  {
+   "value": "ai bek@example.com",
+   "problem": "whitespace"
+  },
+  {
+   "value": " aibek@example.com",
+   "problem": "whitespace"
+  },
+  {
+   "value": "aibek@example.com\t",
+   "problem": "whitespace"
+  },
+  {
+   "value": "aibek@exam ple.com",
+   "problem": "whitespace"
+  },
+  {
+   "value": "aibek@example.com\n",
+   "problem": "whitespace"
+  },
+  {
+   "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@example.com",
+   "problem": "too_long"
+  },
+  {
+   "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "problem": "too_long"
+  }
+ ]
+}

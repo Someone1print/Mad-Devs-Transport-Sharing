@@ -15,9 +15,16 @@ class UserCreate(BaseModel):
         return stripped
 
 
+class UserEmailUpdate(BaseModel):
+    """`""` or `null` clears the address; the format itself is checked in the endpoint."""
+
+    email: str | None = Field(default=None, max_length=1000)
+
+
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     name: str
+    email: str | None = None
     created_at: datetime
