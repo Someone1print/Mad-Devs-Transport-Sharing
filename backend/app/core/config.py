@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from pydantic import Field, computed_field, field_validator
+from pydantic import Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -23,6 +23,9 @@ class Settings(BaseSettings):
 
     # Scooters whose battery is strictly below this percentage become unavailable.
     low_battery_threshold: int = Field(default=15, ge=0, le=100)
+    # A ride ends by itself when telemetry reports a battery strictly below this percentage;
+    # the scooter is then unavailable. Must not exceed the threshold above (see the validator).
+    ride_auto_finish_battery: int = Field(default=10, ge=0, le=100)
 
     # Bookings: how long a hold lasts, how early the rider is warned, how often the
     # background sweeper checks expires_at. Tests set these to seconds instead of minutes.
@@ -56,6 +59,20 @@ class Settings(BaseSettings):
     def quantize_to_kopecks(cls, value: Decimal) -> Decimal:
         """`5` in the environment is the same tariff as `5.00`; keep money at two places."""
         return value.quantize(Decimal("0.01"))
+
+    @model_validator(mode="after")
+    def auto_finish_below_low_battery(self) -> "Settings":
+        """A scooter that ended a ride by running flat must be unavailable, not bookable.
+
+        With the auto-finish threshold above the low-battery one, telemetry would flip such a
+        scooter back to available and the next rider could start a ride that ends at once.
+        """
+        if self.ride_auto_finish_battery > self.low_battery_threshold:
+            raise ValueError(
+                "RIDE_AUTO_FINISH_BATTERY must not exceed LOW_BATTERY_THRESHOLD "
+                f"({self.ride_auto_finish_battery} > {self.low_battery_threshold})"
+            )
+        return self
 
     @computed_field  # type: ignore[prop-decorator]
     @property

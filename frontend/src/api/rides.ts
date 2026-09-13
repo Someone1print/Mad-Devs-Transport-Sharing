@@ -5,6 +5,10 @@ export function fetchActiveRide(userId: number): Promise<Ride | null> {
   return request<Ride | null>('/api/rides/active', { userId })
 }
 
+export function fetchRide(userId: number, rideId: number): Promise<Ride> {
+  return request<Ride>(`/api/rides/${rideId}`, { userId })
+}
+
 export function startRide(userId: number, bookingId: number): Promise<Ride> {
   return request<Ride>('/api/rides', { method: 'POST', body: { booking_id: bookingId }, userId })
 }

@@ -13,6 +13,8 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(64))
+    # entered in the account; None means "not set yet" and receipts go to the name-derived stub
+    email: Mapped[str | None] = mapped_column(String(254))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.clock_timestamp()
     )

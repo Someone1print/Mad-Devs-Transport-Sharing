@@ -90,6 +90,9 @@ function ride(overrides: Partial<Ride> = {}): Ride {
       },
     ],
     receipt: null,
+    finish_reason: null,
+    finish_battery: null,
+    finish_battery_threshold: null,
     ...overrides,
   }
 }
@@ -107,6 +110,21 @@ describe('liveEstimate', () => {
       pauseKopecks: 150,
       totalKopecks: 900,
     })
+  })
+
+  it('a ride restored from the server after a reload counts from its started_at, not from now', () => {
+    // exactly what GET /api/rides/active returns 90 s into a ride: one open ride segment
+    const restored = ride({
+      segments: [
+        { kind: 'ride', started_at: '2026-09-12T10:00:00Z', ended_at: null, seconds: null, cost: null },
+      ],
+    })
+    const reopenedAt = Date.parse('2026-09-12T10:01:30Z')
+
+    const estimate = liveEstimate(restored, reopenedAt)
+
+    expect(estimate.rideSeconds).toBe(90) // the meter ran while the tab was closed
+    expect(estimate.totalKopecks).toBe(750) // 7.50, what the server will bill at this instant
   })
 
   it('matches the backend receipt vector for a multi-pause ride', () => {

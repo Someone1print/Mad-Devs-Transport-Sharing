@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.config import Settings
+from app.core.config import Settings, settings
 from app.models import Booking, BookingStatus, Ride, RideStatus, Scooter, ScooterStatus
 from app.services import rides as ride_service
 from app.services.bookings import create_booking
@@ -33,16 +33,19 @@ def test_riding_is_sticky_against_telemetry(battery: int) -> None:
 async def test_low_battery_telemetry_during_a_ride_keeps_the_scooter_riding(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
+    # exactly at RIDE_AUTO_FINISH_BATTERY (only strictly below ends the ride) and, with the
+    # default thresholds, below LOW_BATTERY_THRESHOLD: the rider keeps the scooter
+    battery = settings.ride_auto_finish_battery
     user_id, scooter_id, booking_id = await booked(db_session)
     await ride_service.start_ride(db_session, user_id, booking_id, TARIFF, at(0))
 
     response = await client.post(
-        "/api/telemetry", json={"code": "KG-B1", "lat": 42.87, "lon": 74.59, "battery": 5}
+        "/api/telemetry", json={"code": "KG-B1", "lat": 42.87, "lon": 74.59, "battery": battery}
     )
 
     assert response.status_code == 200
     assert response.json()["status"] == "riding"
-    assert response.json()["battery"] == 5
+    assert response.json()["battery"] == battery
     db_session.expire_all()
     scooter = await db_session.get(Scooter, scooter_id)
     assert scooter is not None and scooter.status is ScooterStatus.RIDING

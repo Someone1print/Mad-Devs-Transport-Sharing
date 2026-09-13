@@ -8,6 +8,7 @@ export const DEFAULT_CONFIG: PublicConfig = {
   booking_ttl_seconds: 900,
   booking_warn_before_seconds: 180,
   low_battery_threshold: 15,
+  ride_auto_finish_battery: 10,
   ride_rate_per_minute: '5.00',
   pause_rate_per_minute: '1.50',
   currency: 'KGS',

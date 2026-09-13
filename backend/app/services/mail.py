@@ -14,6 +14,12 @@ from app.models import Email, User
 
 MAIL_DOMAIN = "example.invalid"  # RFC 2606: guaranteed never to resolve
 LOCAL_PART_MAX = 64  # RFC 5321; also keeps a 64-char name of 4-letter expansions in String(255)
+EMAIL_MAX_LENGTH = 254  # RFC 5321 path limit; also the users.email column
+# the whitespace set JavaScript's \s matches, spelled out so both sides agree on every character
+# (str.isspace() differs on U+001C-U+001F and U+FEFF)
+_WHITESPACE = re.compile(
+    "[\t\n\v\f\r \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+)
 
 _TRANSLIT = {
     "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo", "ж": "zh",
@@ -22,6 +28,33 @@ _TRANSLIT = {
     "ч": "ch", "ш": "sh", "щ": "shch", "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu",
     "я": "ya", "ң": "ng", "ө": "o", "ү": "u",
 }  # fmt: skip
+
+
+def email_problem(value: str) -> str | None:
+    """Why `value` is not an acceptable address, as a key the client turns into a hint.
+
+    None means the format is fine. Format only — no whitespace, exactly one `@`, a local part,
+    a domain with a dot — because the stub cannot send a confirmation code, so existence is
+    never checked. The same keys come out of the client-side copy (frontend/src/account/email.ts);
+    shared/email-cases.json pins both.
+    """
+    if _WHITESPACE.search(value):
+        return "whitespace"
+    if len(value) > EMAIL_MAX_LENGTH:
+        return "too_long"
+    if value.count("@") != 1:
+        return "at_sign"
+    local_part, domain = value.split("@")
+    if not local_part:
+        return "local_part"
+    if "." not in domain or domain.startswith(".") or domain.endswith(".") or ".." in domain:
+        return "domain"
+    return None
+
+
+def recipient_address(user: User) -> str:
+    """The address entered in the account, or the name-derived stub while it is empty."""
+    return user.email or address_for(user.name)
 
 
 def address_for(name: str) -> str:
@@ -45,7 +78,7 @@ async def send_email(
         insert(Email)
         .values(
             user_id=user.id,
-            to_address=address_for(user.name),
+            to_address=recipient_address(user),
             subject=subject,
             body=body,
             dedup_key=dedup_key,

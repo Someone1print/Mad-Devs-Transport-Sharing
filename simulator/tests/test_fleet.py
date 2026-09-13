@@ -17,6 +17,7 @@ def make_config(**overrides: object) -> Config:
         "min_ride_battery": 20,
         "heartbeat_ticks": 5,
         "held_heartbeat_ticks": 2,
+        "user_ride_drain_per_minute": 0.0,
     }
     values.update(overrides)
     return Config(**values)  # type: ignore[arg-type]
@@ -114,3 +115,32 @@ def test_fleet_from_server_reads_backend_payload() -> None:
     assert [s.code for s in fleet.scooters] == ["KG-1", "KG-2"]
     assert fleet.scooters[0].phase is Phase.IDLE
     assert fleet.scooters[1].phase is Phase.CHARGING
+
+
+def test_user_ride_drains_by_time_on_top_of_distance() -> None:
+    # 36 km/h for 6 s is 60 m: 0.6 % at 10 %/km, plus 30 %/min x 0.1 min = 3 % by time
+    scooter = SimScooter("KG-1", 42.8700, 74.5900, battery=50.0)
+    fleet = make_fleet(
+        [scooter], active_scooters=0, drain_per_km=10.0, user_ride_drain_per_minute=30.0
+    )
+    fleet.apply_server_status("KG-1", "riding", now=0.0)
+
+    fleet.tick(dt=6.0, now=6.0)
+
+    assert scooter.user_ride
+    assert scooter.battery == pytest.approx(50.0 - 0.6 - 3.0, abs=0.01)
+
+
+def test_demo_ride_and_paused_user_ride_do_not_drain_by_time() -> None:
+    demo = SimScooter("KG-1", 42.8700, 74.5900, battery=50.0)
+    paused = SimScooter("KG-2", 42.8710, 74.5900, battery=50.0)
+    fleet = make_fleet(
+        [demo, paused], active_scooters=0, drain_per_km=0.0, user_ride_drain_per_minute=30.0
+    )
+    fleet.start_ride(demo, target=(42.8900, 74.5900), now=0.0)  # the simulator's own ride
+    fleet.apply_server_status("KG-2", "riding", now=0.0, paused=True)  # a user ride on pause
+
+    fleet.tick(dt=6.0, now=6.0)
+
+    assert demo.battery == pytest.approx(50.0)
+    assert paused.battery == pytest.approx(50.0)

@@ -25,8 +25,8 @@ def status_after_telemetry(current: ScooterStatus, battery: int, threshold: int)
     "reason" for unavailability yet).
     """
     if current in HELD:
-        # The user owns the scooter: telemetry only records the battery.
-        # TODO(rides): auto-finish the ride with a bill and an e-mail when the battery runs out.
+        # The user owns the scooter: telemetry only records the battery. A ride whose battery
+        # ran out never gets here: rides.record_telemetry finishes it first (auto_finish_ride).
         return current
     if battery < threshold:
         return ScooterStatus.UNAVAILABLE
@@ -44,9 +44,13 @@ async def apply_telemetry(
 ) -> Scooter | None:
     """Store the reported position and battery; returns None if the code is unknown."""
     # FOR UPDATE: a ride transition may hold this row; wait for it and read the committed
-    # status instead of overwriting it with a stale one (lost update).
+    # status instead of overwriting it with a stale one (lost update). populate_existing: the
+    # row may already sit in the identity map (joined-loaded with a ride) — re-read it.
     scooter = await session.scalar(
-        select(Scooter).where(Scooter.code == telemetry.code).with_for_update()
+        select(Scooter)
+        .where(Scooter.code == telemetry.code)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if scooter is None:
         return None

@@ -670,3 +670,93 @@
 .account__error .link {
   color: #2563eb;
 }
+
+.gate__known {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.gate__known .btn--ghost {
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.gate__or {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.email-field {
+  margin: 4px 0 8px;
+}
+
+.email-field__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.email-field__row {
+  display: flex;
+  gap: 8px;
+}
+
+.email-field__input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font: inherit;
+}
+
+.email-field__input--invalid {
+  border-color: #dc2626;
+}
+
+.email-field__hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.email-field__hint--error {
+  color: #b91c1c;
+}
+
+.history__reason {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 12px;
+}
+
+.modal__notice {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 13px;
+}
+
+.ride-panel__battery {
+  margin: -4px 0 8px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.ride-panel__battery--low {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.modal--top {
+  z-index: 2600;
+}
