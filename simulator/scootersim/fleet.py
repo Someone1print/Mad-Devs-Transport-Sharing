@@ -170,7 +170,10 @@ class Fleet:
         lat, lon, reached = step_towards(scooter.lat, scooter.lon, *scooter.target, step_km)
         moved_km = haversine_km(scooter.lat, scooter.lon, lat, lon)
         scooter.lat, scooter.lon = lat, lon
-        scooter.battery = max(0.0, scooter.battery - moved_km * self.config.drain_per_km)
+        drain = moved_km * self.config.drain_per_km
+        if scooter.user_ride:
+            drain += self.config.user_ride_drain_per_minute * dt / 60
+        scooter.battery = max(0.0, scooter.battery - drain)
         if scooter.battery <= 0.0:
             self._stop(scooter)
         elif reached:

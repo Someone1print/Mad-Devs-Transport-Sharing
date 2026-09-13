@@ -36,6 +36,7 @@ services:
       RIDE_RATE_PER_MINUTE: ${RIDE_RATE_PER_MINUTE:-5.00}
       PAUSE_RATE_PER_MINUTE: ${PAUSE_RATE_PER_MINUTE:-1.50}
       LOCAL_TIMEZONE: ${LOCAL_TIMEZONE:-Asia/Bishkek}
+      RIDE_AUTO_FINISH_BATTERY: ${RIDE_AUTO_FINISH_BATTERY:-10}
     # Apply migrations (verifies the DB connection), seed the demo fleet, then serve the API
     command: sh -c "alembic upgrade head && python -m app.seed && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
@@ -64,6 +65,7 @@ services:
       BACKEND_URL: http://backend:8000
       SIM_ACTIVE_SCOOTERS: ${SIM_ACTIVE_SCOOTERS:-6}
       SIM_INTERVAL_SECONDS: ${SIM_INTERVAL_SECONDS:-1.5}
+      SIM_USER_RIDE_DRAIN_PER_MINUTE: ${SIM_USER_RIDE_DRAIN_PER_MINUTE:-0.5}
     depends_on:
       backend:
         condition: service_healthy
