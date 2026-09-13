@@ -106,7 +106,7 @@ async def test_finish_with_an_earlier_clock_is_clamped_too(db_session: AsyncSess
     await place(db_session, scooter_id, INSIDE)
     ride, _ = await ride_service.start_ride(db_session, user_id, booking_id, TARIFF, at(60))
 
-    finished, _ = await ride_service.finish_ride(
+    finished, _, _ = await ride_service.finish_ride(
         db_session, user_id, ride.id, ZONES, THRESHOLD, at(0)
     )
 
@@ -166,7 +166,7 @@ async def test_second_finish_does_not_clobber_the_next_users_booking(
     next_id = next_user.id
     await create_booking(db_session, next_id, "KG-B1", ttl=timedelta(minutes=15), now=at(61))
 
-    _again, finished_now = await ride_service.finish_ride(
+    _again, finished_now, _ = await ride_service.finish_ride(
         db_session, user_id, ride_id, ZONES, THRESHOLD, at(120)
     )
 
@@ -281,7 +281,9 @@ async def test_rapid_pause_resume_toggling_still_bills_the_whole_ride(
         await action(db_session, user_id, ride_id, t)
     t += td(milliseconds=900)  # 18.9 s in total
 
-    finished, _ = await ride_service.finish_ride(db_session, user_id, ride_id, ZONES, THRESHOLD, t)
+    finished, _, _ = await ride_service.finish_ride(
+        db_session, user_id, ride_id, ZONES, THRESHOLD, t
+    )
 
     assert finished.ride_seconds + finished.pause_seconds == 18  # floor(18.9), not 0
     assert finished.total_cost > Decimal("0.00")
@@ -304,7 +306,7 @@ async def test_segment_seconds_sum_to_the_whole_ride_duration(db_session: AsyncS
         db_session, user_id, ride_id, T0 + td(seconds=20, milliseconds=700)
     )
 
-    finished, _ = await ride_service.finish_ride(
+    finished, _, _ = await ride_service.finish_ride(
         db_session, user_id, ride_id, ZONES, THRESHOLD, T0 + td(seconds=30, milliseconds=900)
     )
 

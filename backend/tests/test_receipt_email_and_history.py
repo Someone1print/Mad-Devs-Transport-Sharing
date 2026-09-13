@@ -87,12 +87,62 @@ async def test_double_finish_does_not_send_a_second_email(
 ) -> None:
     ride = await finished_ride(client, db_session, clock, seconds=120)
     hdrs = ride["_headers"]
+    listener = FakeSocket()
+    hub.register(listener)  # type: ignore[arg-type]
+    hub.identify(listener, int(hdrs["X-User-Id"]))  # type: ignore[arg-type]
 
     clock.set(600)
-    again = await client.post(f"/api/rides/{ride['id']}/finish", headers=hdrs)
+    try:
+        again = await client.post(f"/api/rides/{ride['id']}/finish", headers=hdrs)
+    finally:
+        hub.unregister(listener)  # type: ignore[arg-type]
 
     assert again.status_code == 200
     assert await db_session.scalar(select(func.count()).select_from(Email)) == 1
+    assert listener.of_type("email.sent") == []  # the repeat announces nothing either
+
+
+async def test_finish_survives_a_failing_receipt_insert_and_the_retry_heals_it(
+    client: AsyncClient, db_session: AsyncSession, clock, monkeypatch, caplog
+) -> None:
+    hdrs, booking_id = await booked_via_api(client, db_session)
+    ride_id = (
+        await client.post("/api/rides", json={"booking_id": booking_id}, headers=hdrs)
+    ).json()["id"]
+    listener = FakeSocket()
+    hub.register(listener)  # type: ignore[arg-type]
+    hub.identify(listener, int(hdrs["X-User-Id"]))  # type: ignore[arg-type]
+    # the insert itself fails inside the database: the class of failure the review found
+    monkeypatch.setattr(
+        "app.services.mail.address_for", lambda name: "x" * 300 + "@example.invalid"
+    )
+    clock.set(60)
+    try:
+        finished = await client.post(f"/api/rides/{ride_id}/finish", headers=hdrs)
+        scooters = (await client.get("/api/scooters")).json()
+        after_failure = (await client.get("/api/emails", headers=hdrs)).json()
+        monkeypatch.undo()
+        clock.set(120)
+        again = await client.post(f"/api/rides/{ride_id}/finish", headers=hdrs)
+        healed = (await client.get("/api/emails", headers=hdrs)).json()
+        await client.post(f"/api/rides/{ride_id}/finish", headers=hdrs)
+        third = (await client.get("/api/emails", headers=hdrs)).json()
+    finally:
+        hub.unregister(listener)  # type: ignore[arg-type]
+
+    # the ride is primary: it finished, the scooter is free, the failure is in the log
+    assert finished.status_code == 200
+    assert finished.json()["status"] == "finished"
+    assert next(s for s in scooters if s["code"] == "KG-B1")["status"] == "available"
+    assert after_failure == []
+    assert f"Receipt e-mail for ride {ride_id} not stored" in caplog.text
+    # the idempotent repeat returns the same receipt and stores the missing e-mail, once
+    assert again.status_code == 200
+    assert again.json()["receipt"] == finished.json()["receipt"]
+    assert [e["dedup_key"] for e in healed] == [f"ride:{ride_id}:receipt"]
+    assert len(third) == 1
+    assert len(listener.of_type("ride.finished")) == 1
+    assert len(listener.of_type("email.sent")) == 1  # announced when stored, not before
 
 
 async def test_concurrent_finishes_send_one_email(

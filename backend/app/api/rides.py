@@ -15,7 +15,6 @@ from app.schemas.email import EmailOut
 from app.schemas.ride import RideOut, RideStart
 from app.schemas.scooter import ScooterOut
 from app.services import rides as ride_service
-from app.services.receipts import receipt_dedup_key
 from app.services.rides import RideError, Tariff
 
 router = APIRouter()
@@ -103,15 +102,19 @@ async def finish_ride(ride_id: int, user: CurrentUser, session: DbSession) -> Ri
         # fail closed (no ride can end) but say why: the seed should have inserted a zone
         logger.warning("No service zones configured: every finish will be refused")
     try:
-        ride, finished_now = await ride_service.finish_ride(
+        ride, finished_now, email_id = await ride_service.finish_ride(
             session, user.id, ride_id, zones, settings.low_battery_threshold, clock.now()
         )
     except RideError as exc:
         raise http_error(exc) from exc
-    if not finished_now:
-        return RideOut.from_ride(ride)
-    out = await publish_ride_change(ride, "ride.finished")
-    email = await session.scalar(select(Email).where(Email.dedup_key == receipt_dedup_key(ride)))
-    if email is not None:
-        await hub.send_to_user(ride.user_id, email_event(EmailOut.model_validate(email)))
+    out = (
+        await publish_ride_change(ride, "ride.finished")
+        if finished_now
+        else RideOut.from_ride(ride)
+    )
+    # the e-mail is announced when it is stored — normally now, or on the retry that healed it
+    if email_id is not None:
+        email = await session.get(Email, email_id)
+        if email is not None:
+            await hub.send_to_user(ride.user_id, email_event(EmailOut.model_validate(email)))
     return out

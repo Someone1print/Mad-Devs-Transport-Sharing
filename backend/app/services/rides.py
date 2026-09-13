@@ -5,10 +5,12 @@ scooter; pause/resume/finish lock the ride and then the scooter. Repeated identi
 transitions are idempotent and return the current state instead of failing.
 """
 
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from typing import NamedTuple
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -28,6 +30,8 @@ from app.models import (
 )
 from app.services.receipts import send_receipt
 from app.services.scooters import release_status
+
+logger = logging.getLogger(__name__)
 
 UNFINISHED = (RideStatus.ACTIVE, RideStatus.PAUSED)
 
@@ -131,6 +135,33 @@ def _close_segment(ride: Ride, segment: RideSegment, now: datetime) -> datetime:
     )
     segment.cost = segment_cost(rate, segment.seconds)
     return now
+
+
+class FinishResult(NamedTuple):
+    ride: Ride
+    finished_now: bool
+    # the receipt e-mail stored by this very call; None when it already existed or failed
+    email_id: int | None
+
+
+async def _store_receipt(session: AsyncSession, ride: Ride) -> int | None:
+    """The receipt e-mail in a savepoint: the ride is primary, a failing insert must not undo it.
+
+    Nothing leaves the database here (no SMTP), so the only failures are infrastructure ones,
+    which sink the whole transaction anyway, and data-shape ones like the overlong address the
+    review found. The latter now cost the rider nothing: the finish commits, the failure is
+    logged, and because the insert is idempotent (dedup key = ride id) the next finish call —
+    idempotent as well — stores the missing e-mail.
+    """
+    try:
+        async with session.begin_nested():
+            email = await send_receipt(session, ride.user, ride)
+    except Exception:
+        logger.exception(
+            "Receipt e-mail for ride %s not stored; the ride is finished anyway", ride.id
+        )
+        return None
+    return None if email is None else email.id
 
 
 async def _reload(session: AsyncSession, ride_id: int) -> Ride:
@@ -245,15 +276,20 @@ async def finish_ride(
     zones: Sequence[Sequence[Point]],
     low_battery_threshold: int,
     now: datetime,
-) -> tuple[Ride, bool]:
-    """Close the open segment, bill the ride and free the scooter. Returns (ride, finished_now).
+) -> FinishResult:
+    """Close the open segment, bill the ride and free the scooter.
 
     The scooter's own position (last telemetry) must be inside a service zone; the client
-    cannot fake it. A ride that is already finished is returned unchanged with finished_now=False.
+    cannot fake it. A ride that is already finished is returned unchanged with finished_now=False;
+    that repeat is also the second chance for a receipt e-mail whose insert failed before.
     """
     ride = await _locked_ride(session, user_id, ride_id)
     if ride.status is RideStatus.FINISHED:
-        return ride, False
+        email_id = await _store_receipt(session, ride)
+        if email_id is None:
+            return FinishResult(ride, False, None)
+        await session.commit()
+        return FinishResult(await _reload(session, ride_id), False, email_id)
     scooter = await _locked_scooter(session, ride.scooter_id)
     position = Point(scooter.lat, scooter.lon)
     if not any(point_in_polygon(position, zone) for zone in zones):
@@ -277,9 +313,10 @@ async def finish_ride(
     ride.status = RideStatus.FINISHED
     scooter.status = release_status(scooter.battery, low_battery_threshold)
     scooter.paused = False
-    # the receipt e-mail is part of the same transaction: receipt and mail, or neither;
-    # its dedup key (the ride id) keeps concurrent finishes at exactly one message
+    # the receipt e-mail rides in the same transaction (receipt and mail together), isolated by
+    # a savepoint so that its failure cannot block the finish; its dedup key (the ride id)
+    # keeps concurrent finishes and retries at exactly one message
     await session.flush()
-    await send_receipt(session, ride.user, ride)
+    email_id = await _store_receipt(session, ride)
     await session.commit()
-    return await _reload(session, ride_id), True
+    return FinishResult(await _reload(session, ride_id), True, email_id)

@@ -208,7 +208,7 @@ async def test_finish_inside_zone_bills_segments_and_frees_scooter(
     await ride_service.pause_ride(db_session, user_id, ride_id, at(211))  # ride 61 s → 5.08
     await ride_service.resume_ride(db_session, user_id, ride_id, at(212))  # pause 1 s → 0.03
 
-    finished, done_now = await ride_service.finish_ride(
+    finished, done_now, _ = await ride_service.finish_ride(
         db_session,
         user_id,
         ride_id,
@@ -256,7 +256,7 @@ async def test_finish_while_paused_bills_the_open_pause(db_session: AsyncSession
     ride_id = ride.id
     await ride_service.pause_ride(db_session, user_id, ride_id, at(60))
 
-    finished, _ = await ride_service.finish_ride(
+    finished, _, _ = await ride_service.finish_ride(
         db_session, user_id, ride_id, ZONES, THRESHOLD, at(120)
     )
 
@@ -269,11 +269,11 @@ async def test_double_finish_returns_the_same_receipt(db_session: AsyncSession) 
     await place(db_session, scooter_id, INSIDE)
     ride, _ = await ride_service.start_ride(db_session, user_id, booking_id, TARIFF, at(0))
     ride_id = ride.id
-    first, _ = await ride_service.finish_ride(
+    first, _, _ = await ride_service.finish_ride(
         db_session, user_id, ride_id, ZONES, THRESHOLD, at(90)
     )
 
-    again, done_now = await ride_service.finish_ride(
+    again, done_now, _ = await ride_service.finish_ride(
         db_session, user_id, ride_id, ZONES, THRESHOLD, at(500)
     )
 
