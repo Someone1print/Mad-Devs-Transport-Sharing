@@ -42,6 +42,9 @@ class Settings(BaseSettings):
         default=Decimal("1.50"), ge=0, le=Decimal("9999.99"), max_digits=8, decimal_places=2
     )
 
+    # Time zone for human-readable times in e-mails (the map is Bishkek; API stays in UTC).
+    local_timezone: str = "Asia/Bishkek"
+
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_user: str = "scooter"

@@ -3,6 +3,7 @@
 from app.billing import SegmentKind
 from app.db.base import Base
 from app.models.booking import Booking, BookingStatus
+from app.models.email import Email
 from app.models.ride import Ride, RideSegment, RideStatus
 from app.models.scooter import Scooter, ScooterStatus
 from app.models.user import User
@@ -12,6 +13,7 @@ __all__ = [
     "Base",
     "Booking",
     "BookingStatus",
+    "Email",
     "Ride",
     "RideSegment",
     "RideStatus",

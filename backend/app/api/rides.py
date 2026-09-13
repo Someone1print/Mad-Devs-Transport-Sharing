@@ -9,8 +9,9 @@ from app.api.deps import CurrentUser, api_error
 from app.core import clock
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Ride, ServiceZone
-from app.realtime.hub import hub, ride_event, scooter_updated_event
+from app.models import Email, Ride, ServiceZone
+from app.realtime.hub import email_event, hub, ride_event, scooter_updated_event
+from app.schemas.email import EmailOut
 from app.schemas.ride import RideOut, RideStart
 from app.schemas.scooter import ScooterOut
 from app.services import rides as ride_service
@@ -63,6 +64,12 @@ async def start_ride(
     return await publish_ride_change(ride, "ride.started")
 
 
+@router.get("/rides", summary="The caller's finished rides, newest first")
+async def list_rides(user: CurrentUser, session: DbSession) -> list[RideOut]:
+    rides = await ride_service.list_finished_rides(session, user.id)
+    return [RideOut.from_ride(ride) for ride in rides]
+
+
 @router.get("/rides/active", summary="The caller's ride in progress, if any")
 async def get_active_ride(user: CurrentUser, session: DbSession) -> RideOut | None:
     ride = await ride_service.get_active_ride(session, user.id)
@@ -95,11 +102,19 @@ async def finish_ride(ride_id: int, user: CurrentUser, session: DbSession) -> Ri
         # fail closed (no ride can end) but say why: the seed should have inserted a zone
         logger.warning("No service zones configured: every finish will be refused")
     try:
-        ride, finished_now = await ride_service.finish_ride(
+        ride, finished_now, email_id = await ride_service.finish_ride(
             session, user.id, ride_id, zones, settings.low_battery_threshold, clock.now()
         )
     except RideError as exc:
         raise http_error(exc) from exc
-    if not finished_now:
-        return RideOut.from_ride(ride)
-    return await publish_ride_change(ride, "ride.finished")
+    out = (
+        await publish_ride_change(ride, "ride.finished")
+        if finished_now
+        else RideOut.from_ride(ride)
+    )
+    # the e-mail is announced when it is stored — normally now, or on the retry that healed it
+    if email_id is not None:
+        email = await session.get(Email, email_id)
+        if email is not None:
+            await hub.send_to_user(ride.user_id, email_event(EmailOut.model_validate(email)))
+    return out

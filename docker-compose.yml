@@ -35,6 +35,7 @@ services:
       BOOKING_SWEEP_INTERVAL_SECONDS: ${BOOKING_SWEEP_INTERVAL_SECONDS:-2}
       RIDE_RATE_PER_MINUTE: ${RIDE_RATE_PER_MINUTE:-5.00}
       PAUSE_RATE_PER_MINUTE: ${PAUSE_RATE_PER_MINUTE:-1.50}
+      LOCAL_TIMEZONE: ${LOCAL_TIMEZONE:-Asia/Bishkek}
     # Apply migrations (verifies the DB connection), seed the demo fleet, then serve the API
     command: sh -c "alembic upgrade head && python -m app.seed && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
