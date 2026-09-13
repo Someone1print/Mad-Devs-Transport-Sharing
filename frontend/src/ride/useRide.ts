@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { ApiError } from '../api/client'
-import { fetchActiveRide, finishRide, pauseRide, resumeRide, startRide } from '../api/rides'
+import { fetchActiveRide, fetchRide, finishRide, pauseRide, resumeRide, startRide } from '../api/rides'
 import type { Ride, RideEvent } from '../api/types'
 import type { ToastInput } from '../hooks/useToasts'
+import { forgetRide, recallRide, rememberRide } from './rideMemory'
 import { applyRideEvent, rideErrorMessage } from './rideState'
 
 interface UseRideOptions {
   userId: number | null
   notify: (toast: ToastInput) => void
-  /** The finish response arrived: the ride is in the history even if the socket event is lost. */
+  /** The ride ended (finish response, socket event, or found finished on return). */
   onFinished?: (ride: Ride) => void
 }
 
@@ -58,42 +59,75 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
     [userId],
   )
 
-  const refresh = useCallback(async () => {
+  const ended = useCallback(
+    (ride: Ride) => {
+      if (userId !== null) {
+        forgetRide(userId)
+      }
+      setFinished(ride)
+      onFinished?.(ride)
+    },
+    [userId, onFinished],
+  )
+
+  /**
+   * The server's picture, used on start and after a reconnect. No active ride but one we
+   * remembered (the tab was closed, the socket was down) means it ended without us — a flat
+   * battery, or a finish from another tab: fetch it and show its receipt once.
+   */
+  const load = useCallback(async (): Promise<void> => {
     if (userId === null) {
       return
     }
+    const ride = await fetchActiveRide(userId)
+    if (ride !== null) {
+      rememberRide(userId, ride.id)
+      // a `ride.finished` event may have overtaken this response: never resurrect the ride
+      setRide((known) =>
+        known !== null && known.id === ride.id && known.status === 'finished' ? known : ride,
+      )
+      return
+    }
+    const remembered = recallRide(userId)
+    setRide(null)
+    if (remembered === null) {
+      return
+    }
+    forgetRide(userId)
+    const gone = await fetchRide(userId, remembered).catch(() => null)
+    if (gone !== null && gone.status === 'finished') {
+      ended(gone)
+    }
+  }, [userId, setRide, ended])
+
+  const refresh = useCallback(async () => {
     try {
-      setRide(await fetchActiveRide(userId))
+      await load()
     } catch (error) {
       console.warn('Could not load the active ride', error)
     }
-  }, [userId, setRide])
+  }, [load])
 
   useEffect(() => {
     if (userId === null) {
       return
     }
-    let cancelled = false
-    fetchActiveRide(userId)
-      .then((ride) => {
-        if (!cancelled) {
-          setRide(ride)
-        }
-      })
+    // state changes only in the continuation; a stale load is ignored by the userId key
+    Promise.resolve()
+      .then(load)
       .catch((error: unknown) => console.warn('Could not load the active ride', error))
-    return () => {
-      cancelled = true
-    }
-  }, [userId, setRide])
+  }, [userId, load])
 
   const handleEvent = useCallback(
     (event: RideEvent) => {
       setRide((known: Ride | null) => applyRideEvent(known, event))
       if (event.type === 'ride.finished') {
-        setFinished(event.ride)
+        ended(event.ride)
+      } else if (userId !== null) {
+        rememberRide(userId, event.ride.id)
       }
     },
-    [setRide],
+    [setRide, ended, userId],
   )
 
   const run = useCallback(
@@ -102,6 +136,9 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
       try {
         const ride = await action()
         setRide(ride)
+        if (userId !== null && ride.status !== 'finished') {
+          rememberRide(userId, ride.id)
+        }
         onDone?.(ride)
         return true
       } catch (error) {
@@ -114,7 +151,7 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
         setBusy(false)
       }
     },
-    [notify, setRide, refresh],
+    [notify, setRide, refresh, userId],
   )
 
   const start = useCallback(
@@ -148,14 +185,8 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
     if (userId === null || active === null) {
       return
     }
-    await run(
-      () => finishRide(userId, active.id),
-      (ride) => {
-        setFinished(ride)
-        onFinished?.(ride)
-      },
-    )
-  }, [userId, active, run, onFinished])
+    await run(() => finishRide(userId, active.id), ended)
+  }, [userId, active, run, ended])
 
   const dismissReceipt = useCallback(() => setFinished(null), [])
 

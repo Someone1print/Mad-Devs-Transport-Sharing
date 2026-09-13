@@ -10,6 +10,8 @@ interface RidePanelProps {
   now: number
   busy: boolean
   currency: string
+  /** RIDE_AUTO_FINISH_BATTERY from /api/config: below it the ride ends by itself. */
+  autoFinishBattery: number
   onPause: () => void
   onResume: () => void
   onFinish: () => void
@@ -17,7 +19,10 @@ interface RidePanelProps {
 
 /** Floating card for the ride in progress: timers, live cost, zone indicator and controls. */
 export function RidePanel(props: RidePanelProps) {
-  const { ride, scooter, zones, now, busy, currency, onPause, onResume, onFinish } = props
+  const { ride, scooter, zones, now, busy, currency, autoFinishBattery } = props
+  const { onPause, onResume, onFinish } = props
+  const battery = scooter?.battery ?? null
+  const nearCutoff = battery !== null && battery < autoFinishBattery + 5
   const estimate = liveEstimate(ride, now)
   const paused = ride.status === 'paused'
   const inZone = scooter ? insideAnyZone({ lat: scooter.lat, lon: scooter.lon }, zones) : null
@@ -36,6 +41,12 @@ export function RidePanel(props: RidePanelProps) {
           </span>
         )}
       </header>
+      {battery !== null && (
+        <p className={`ride-panel__battery ${nearCutoff ? 'ride-panel__battery--low' : ''}`} data-testid="ride-battery">
+          Заряд {battery} %
+          {nearCutoff && ` — при заряде ниже ${autoFinishBattery} % поездка завершится сама`}
+        </p>
+      )}
       <dl className="ride-panel__stats">
         <div>
           <dt>Езда</dt>
