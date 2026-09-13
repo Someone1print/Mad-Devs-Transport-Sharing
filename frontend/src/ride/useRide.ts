@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ApiError } from '../api/client'
 import { fetchActiveRide, fetchRide, finishRide, pauseRide, resumeRide, startRide } from '../api/rides'
@@ -47,12 +47,22 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
   const [busy, setBusy] = useState(false)
   const current = held.userId === userId ? held.ride : null
   const active = current !== null && current.status !== 'finished' ? current : null
+  // the last ride this tab saw end: every way a ride ends may report it more than once
+  // (finish response + socket event, event + recall), and none of them may resurrect it
+  const endedRef = useRef<number | null>(null)
+  // bumps when the rider changes: a load still in flight for the previous rider is dropped
+  const epochRef = useRef(0)
 
   const setRide = useCallback(
     (update: Ride | null | ((known: Ride | null) => Ride | null)) => {
       setHeld((prev) => {
         const known = prev.userId === userId ? prev.ride : null
         const ride = typeof update === 'function' ? update(known) : update
+        // a response overtaken by `ride.finished` (a stale /rides/active, a pause that
+        // committed just before the battery finish) must not bring the ride back
+        if (ride !== null && ride.status !== 'finished' && ride.id === endedRef.current) {
+          return prev
+        }
         return { userId, ride }
       })
     },
@@ -61,13 +71,15 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
 
   const ended = useCallback(
     (ride: Ride) => {
-      if (userId !== null) {
-        forgetRide(userId)
+      forgetRide(ride.user_id)
+      if (endedRef.current === ride.id) {
+        return // already shown and announced
       }
+      endedRef.current = ride.id
       setFinished(ride)
       onFinished?.(ride)
     },
-    [userId, onFinished],
+    [onFinished],
   )
 
   /**
@@ -79,13 +91,17 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
     if (userId === null) {
       return
     }
+    const epoch = epochRef.current
+    const stale = () => epochRef.current !== epoch // the rider changed while we waited
     const ride = await fetchActiveRide(userId)
+    if (stale()) {
+      return
+    }
     if (ride !== null) {
-      rememberRide(userId, ride.id)
-      // a `ride.finished` event may have overtaken this response: never resurrect the ride
-      setRide((known) =>
-        known !== null && known.id === ride.id && known.status === 'finished' ? known : ride,
-      )
+      if (ride.id !== endedRef.current) {
+        rememberRide(userId, ride.id) // not a ride the socket already reported finished
+      }
+      setRide(ride)
       return
     }
     const remembered = recallRide(userId)
@@ -93,9 +109,20 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
     if (remembered === null) {
       return
     }
+    let gone: Ride | null
+    try {
+      gone = await fetchRide(userId, remembered)
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 404 || error.status === 403)) {
+        forgetRide(userId) // nothing to come back to
+      }
+      return // a transient failure keeps the id: the next load tries again
+    }
+    if (stale()) {
+      return
+    }
     forgetRide(userId)
-    const gone = await fetchRide(userId, remembered).catch(() => null)
-    if (gone !== null && gone.status === 'finished') {
+    if (gone.status === 'finished') {
       ended(gone)
     }
   }, [userId, setRide, ended])
@@ -109,10 +136,11 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
   }, [load])
 
   useEffect(() => {
+    epochRef.current += 1 // whatever was loading for the previous rider is now stale
     if (userId === null) {
       return
     }
-    // state changes only in the continuation; a stale load is ignored by the userId key
+    // state changes only in the continuation (the set-state-in-effect rule)
     Promise.resolve()
       .then(load)
       .catch((error: unknown) => console.warn('Could not load the active ride', error))
@@ -123,11 +151,11 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
       setRide((known: Ride | null) => applyRideEvent(known, event))
       if (event.type === 'ride.finished') {
         ended(event.ride)
-      } else if (userId !== null) {
-        rememberRide(userId, event.ride.id)
+      } else {
+        rememberRide(event.ride.user_id, event.ride.id)
       }
     },
-    [setRide, ended, userId],
+    [setRide, ended],
   )
 
   const run = useCallback(
@@ -136,8 +164,8 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
       try {
         const ride = await action()
         setRide(ride)
-        if (userId !== null && ride.status !== 'finished') {
-          rememberRide(userId, ride.id)
+        if (ride.status !== 'finished') {
+          rememberRide(ride.user_id, ride.id)
         }
         onDone?.(ride)
         return true
@@ -151,7 +179,7 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
         setBusy(false)
       }
     },
-    [notify, setRide, refresh, userId],
+    [notify, setRide, refresh],
   )
 
   const start = useCallback(

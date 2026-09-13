@@ -16,6 +16,7 @@ export function UserGate({ loading, known, onRegister, onContinue }: UserGatePro
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [resuming, setResuming] = useState(false)
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -40,7 +41,7 @@ export function UserGate({ loading, known, onRegister, onContinue }: UserGatePro
   }
 
   const resume = async (rider: StoredUser) => {
-    setSubmitting(true)
+    setResuming(true)
     setError(null)
     try {
       await onContinue(rider)
@@ -51,9 +52,10 @@ export function UserGate({ loading, known, onRegister, onContinue }: UserGatePro
           : 'Нет связи с сервером, попробуйте ещё раз',
       )
     } finally {
-      setSubmitting(false)
+      setResuming(false)
     }
   }
+  const pending = loading || submitting || resuming
 
   return (
     <div className="gate" role="dialog" aria-modal="true" aria-labelledby="gate-title">
@@ -62,7 +64,8 @@ export function UserGate({ loading, known, onRegister, onContinue }: UserGatePro
           Как вас зовут?
         </h2>
         <p className="gate__hint">
-          Имя нужно, чтобы бронировать самокаты. Без пароля: сессия живёт в этой вкладке.
+          Имя нужно, чтобы бронировать самокаты. Без пароля: вкладка запомнит вас, а новая вкладка
+          продолжит под последним пользователем этого браузера.
         </p>
         {known.length > 0 && (
           <div className="gate__known" data-testid="known-riders">
@@ -71,7 +74,7 @@ export function UserGate({ loading, known, onRegister, onContinue }: UserGatePro
                 key={rider.id}
                 type="button"
                 className="btn btn--ghost"
-                disabled={loading || submitting}
+                disabled={pending}
                 onClick={() => void resume(rider)}
               >
                 Продолжить как {rider.name}
@@ -86,12 +89,12 @@ export function UserGate({ loading, known, onRegister, onContinue }: UserGatePro
           maxLength={64}
           placeholder="Например, Айбек"
           value={name}
-          disabled={loading || submitting}
+          disabled={pending}
           onChange={(event) => setName(event.target.value)}
         />
         {error && <div className="gate__error">{error}</div>}
-        <button className="btn btn--primary" type="submit" disabled={loading || submitting}>
-          {loading ? 'Проверяем сессию…' : submitting ? 'Создаём…' : 'Продолжить'}
+        <button className="btn btn--primary" type="submit" disabled={pending}>
+          {loading || resuming ? 'Проверяем сессию…' : submitting ? 'Создаём…' : 'Продолжить'}
         </button>
       </form>
     </div>

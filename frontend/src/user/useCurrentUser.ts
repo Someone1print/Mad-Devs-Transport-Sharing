@@ -24,6 +24,8 @@ export interface CurrentUser {
   continueAs: (rider: StoredUser) => Promise<void>
   /** The server changed the user (e.g. the e-mail was saved): keep the state in step. */
   updateUser: (user: User) => void
+  /** Re-read the user from the server (after a reconnect: another tab may have changed it). */
+  refresh: () => Promise<void>
   signOut: () => void
 }
 
@@ -94,10 +96,21 @@ export function useCurrentUser(): CurrentUser {
     setState({ status: 'ready', user })
   }, [])
 
+  const refresh = useCallback(async () => {
+    if (state.status !== 'ready') {
+      return
+    }
+    try {
+      updateUser(await fetchMe(state.user.id))
+    } catch (error) {
+      console.warn('Could not refresh the user', error)
+    }
+  }, [state, updateUser])
+
   const signOut = useCallback(() => {
     clearStoredUser()
     setState({ status: 'anonymous', known: loadKnownRiders() })
   }, [])
 
-  return { state, register, continueAs, updateUser, signOut }
+  return { state, register, continueAs, updateUser, refresh, signOut }
 }

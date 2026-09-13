@@ -151,7 +151,8 @@ export function AccountPanel(props: AccountPanelProps) {
               Кабинет
             </h2>
             <span className="account__who">
-              {user.name} · {user.mail_address}
+              {user.name}
+              {user.mail_address ? ` · ${user.mail_address}` : ''}
             </span>
             <button type="button" className="account__close" aria-label="Закрыть" onClick={onClose}>
               ×

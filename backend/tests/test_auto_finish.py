@@ -3,6 +3,7 @@ receipt e-mail with the explanation, and exactly one finish however the reports 
 
 import asyncio
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -155,10 +156,16 @@ async def test_flat_battery_after_the_manual_finish_is_plain_telemetry(
     assert await db_session.scalar(select(func.count()).select_from(Email)) == 1
 
 
+@pytest.mark.parametrize("first", ["finish", "telemetry"])
 async def test_telemetry_and_manual_finish_racing_on_the_ride_lock_finish_it_once(
-    client: AsyncClient, committed_db: async_sessionmaker[AsyncSession], clock
+    client: AsyncClient, committed_db: async_sessionmaker[AsyncSession], clock, first: str
 ) -> None:
-    """Both requests wait on the ride row a third session holds; released together, one wins."""
+    """Both requests wait on the ride row a third session holds; released together, one wins.
+
+    PostgreSQL hands a contended row lock to waiters in arrival order, so `first` decides the
+    winner: the rider's finish (reason `user`, then plain telemetry) or the flat report
+    (reason `battery`, then an idempotent finish).
+    """
     from tests.test_rides_service import INSIDE
 
     async with committed_db() as session:
@@ -174,10 +181,16 @@ async def test_telemetry_and_manual_finish_racing_on_the_ride_lock_finish_it_onc
             await locker.execute(
                 text("SELECT id FROM rides WHERE id = :id FOR UPDATE"), {"id": ride_id}
             )
-            manual = asyncio.create_task(client.post(f"/api/rides/{ride_id}/finish", headers=hdrs))
-            flat = asyncio.create_task(
-                client.post("/api/telemetry", json=telemetry(THRESHOLD - 1, INSIDE))
-            )
+            post_finish = lambda: client.post(f"/api/rides/{ride_id}/finish", headers=hdrs)  # noqa: E731
+            post_flat = lambda: client.post("/api/telemetry", json=telemetry(THRESHOLD - 1, INSIDE))  # noqa: E731
+            if first == "finish":
+                manual = asyncio.create_task(post_finish())
+                await asyncio.sleep(0.1)  # let it reach the lock queue first
+                flat = asyncio.create_task(post_flat())
+            else:
+                flat = asyncio.create_task(post_flat())
+                await asyncio.sleep(0.1)
+                manual = asyncio.create_task(post_finish())
             await asyncio.sleep(0.3)
             assert not manual.done() and not flat.done(), "both must wait for the ride row"
             await locker.commit()
@@ -201,6 +214,7 @@ async def test_telemetry_and_manual_finish_racing_on_the_ride_lock_finish_it_onc
     # whoever won, a scooter reporting a flat battery is unavailable afterwards
     assert scooter is not None and scooter.status is ScooterStatus.UNAVAILABLE
     assert finish_response.json()["finish_reason"] == ride.finish_reason.value
+    assert ride.finish_reason.value == ("user" if first == "finish" else "battery")
 
 
 async def test_get_ride_is_private(client: AsyncClient, db_session: AsyncSession, clock) -> None:

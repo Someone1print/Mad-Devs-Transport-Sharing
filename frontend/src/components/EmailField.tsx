@@ -17,13 +17,16 @@ interface EmailFieldProps {
 export function EmailField({ user, onSave }: EmailFieldProps) {
   const [value, setValue] = useState(user.email ?? '')
   const [touched, setTouched] = useState(false)
-  const [serverHint, setServerHint] = useState<string | null>(null)
+  // a format rule the server refused (it names the rule, like the client does)
+  const [serverProblem, setServerProblem] = useState<string | null>(null)
+  // a failed request: not the rider's fault, so the field is not marked invalid
+  const [saveFailed, setSaveFailed] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [savedAs, setSavedAs] = useState<string | null>(null)
+  const [saved, setSaved] = useState<{ email: string | null } | null>(null)
 
   const trimmed = value.trim()
   const problem = trimmed ? emailProblem(trimmed) : null
-  const hint = serverHint ?? (touched && problem ? emailHint(problem) : null)
+  const formatHint = serverProblem ? emailHint(serverProblem) : touched && problem ? emailHint(problem) : null
   const dirty = trimmed !== (user.email ?? '')
 
   const submit = async (event: FormEvent) => {
@@ -33,16 +36,17 @@ export function EmailField({ user, onSave }: EmailFieldProps) {
       return
     }
     setSaving(true)
-    setServerHint(null)
+    setServerProblem(null)
+    setSaveFailed(false)
     try {
-      const saved = await onSave(trimmed)
-      setSavedAs(saved.email)
-      setValue(saved.email ?? '')
+      const result = await onSave(trimmed)
+      setSaved({ email: result.email })
+      setValue(result.email ?? '')
     } catch (error) {
       if (error instanceof ApiError && error.code === 'invalid_email') {
-        setServerHint(emailHint(String(error.detail.problem ?? '')))
+        setServerProblem(String(error.detail.problem ?? ''))
       } else {
-        setServerHint('Не удалось сохранить адрес, попробуйте ещё раз')
+        setSaveFailed(true)
       }
     } finally {
       setSaving(false)
@@ -57,19 +61,20 @@ export function EmailField({ user, onSave }: EmailFieldProps) {
       <div className="email-field__row">
         <input
           id="account-email"
-          className={`email-field__input ${hint ? 'email-field__input--invalid' : ''}`}
+          className={`email-field__input ${formatHint ? 'email-field__input--invalid' : ''}`}
           type="email"
           inputMode="email"
           autoComplete="email"
-          placeholder={user.mail_address}
+          placeholder="name@example.com"
           value={value}
           disabled={saving}
-          aria-invalid={hint !== null}
+          aria-invalid={formatHint !== null}
           aria-describedby="account-email-hint"
           onChange={(event) => {
             setValue(event.target.value)
-            setServerHint(null)
-            setSavedAs(null)
+            setServerProblem(null)
+            setSaveFailed(false)
+            setSaved(null)
           }}
           onBlur={() => setTouched(true)}
         />
@@ -81,15 +86,23 @@ export function EmailField({ user, onSave }: EmailFieldProps) {
           {saving ? 'Сохраняем…' : 'Сохранить'}
         </button>
       </div>
-      <p id="account-email-hint" className={`email-field__hint ${hint ? 'email-field__hint--error' : ''}`}>
-        {hint ??
-          (savedAs !== null
-            ? savedAs
-              ? `Сохранено: чеки будут приходить на ${savedAs}`
-              : `Адрес очищен: чеки идут на ${user.mail_address}`
-            : user.email
-              ? `Чеки приходят на ${user.email}`
-              : `Пока адрес не указан, чеки идут на ${user.mail_address}`)}
+      <p
+        id="account-email-hint"
+        className={`email-field__hint ${formatHint || saveFailed ? 'email-field__hint--error' : ''}`}
+        aria-live="polite"
+      >
+        {formatHint ??
+          (saveFailed
+            ? 'Не удалось сохранить адрес, попробуйте ещё раз'
+            : saved !== null
+              ? saved.email
+                ? `Сохранено: чеки будут приходить на ${saved.email}`
+                : `Адрес очищен: чеки идут на ${user.mail_address || 'адрес из имени'}`
+              : user.email
+                ? `Чеки приходят на ${user.email}`
+                : user.mail_address
+                  ? `Пока адрес не указан, чеки идут на ${user.mail_address}`
+                  : 'Пока адрес не указан, чеки идут на адрес из имени')}
       </p>
     </form>
   )

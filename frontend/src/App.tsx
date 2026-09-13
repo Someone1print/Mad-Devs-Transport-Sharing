@@ -48,7 +48,6 @@ function App() {
   const onFinished = useCallback(
     (finished: Ride) => {
       setLastFinishedId(finished.id)
-      setAccount(null) // the receipt opens on top; not underneath the account panel
       if (finished.finish_reason === 'battery') {
         notify({
           kind: 'error',
@@ -90,13 +89,15 @@ function App() {
   const refreshBooking = booking.refresh
   const refreshMail = mailbox.refresh
   const refreshHistory = history.refresh
+  const refreshUser = currentUser.refresh
   const onReconnect = useCallback(() => {
     // events sent while the socket was down are gone: reload the personal state
     void refreshRide()
     void refreshBooking()
     void refreshMail()
     void refreshHistory()
-  }, [refreshRide, refreshBooking, refreshMail, refreshHistory])
+    void refreshUser()
+  }, [refreshRide, refreshBooking, refreshMail, refreshHistory, refreshUser])
   const { scooters, connection } = useScooterFeed({
     userId,
     onBookingEvent: booking.handleEvent,
@@ -226,7 +227,6 @@ function App() {
           />
         )}
       </main>
-      {ride.finished && <ReceiptModal ride={ride.finished} onClose={ride.dismissReceipt} />}
       {account !== null && user && (
         <AccountPanel
           user={user}
@@ -246,6 +246,8 @@ function App() {
           onClose={() => setAccount(null)}
         />
       )}
+      {/* after the account panel in the DOM: a receipt that arrives while it is open stacks on top */}
+      {ride.finished && <ReceiptModal ride={ride.finished} onClose={ride.dismissReceipt} />}
       {currentUser.state.status !== 'ready' && (
         <UserGate
           loading={currentUser.state.status === 'loading'}

@@ -55,7 +55,9 @@ async def test_me_with_unknown_or_malformed_id_is_unauthorized(
     assert malformed.status_code == 401
 
 
-async def test_email_can_be_set_cleared_and_is_validated(client: AsyncClient) -> None:
+async def test_email_can_be_set_cleared_and_is_validated(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     created = (await client.post("/api/users", json={"name": "Dana"})).json()
     hdrs = {"X-User-Id": str(created["id"])}
     assert created["email"] is None
