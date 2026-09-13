@@ -24,6 +24,8 @@ def upgrade() -> None:
     finish_reason = postgresql.ENUM("user", "battery", name="finish_reason")
     finish_reason.create(op.get_bind(), checkfirst=True)
     op.add_column("rides", sa.Column("finish_reason", finish_reason, nullable=True))
+    op.add_column("rides", sa.Column("finish_battery", sa.SmallInteger(), nullable=True))
+    op.add_column("rides", sa.Column("finish_battery_threshold", sa.SmallInteger(), nullable=True))
     # every ride finished so far was finished by its rider
     op.execute("UPDATE rides SET finish_reason = 'user' WHERE status = 'finished'")
     op.add_column("users", sa.Column("email", sa.String(length=254), nullable=True))
@@ -32,5 +34,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Revert the schema change."""
     op.drop_column("users", "email")
+    op.drop_column("rides", "finish_battery_threshold")
+    op.drop_column("rides", "finish_battery")
     op.drop_column("rides", "finish_reason")
     postgresql.ENUM(name="finish_reason").drop(op.get_bind(), checkfirst=True)

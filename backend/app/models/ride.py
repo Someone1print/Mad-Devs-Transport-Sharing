@@ -10,6 +10,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    SmallInteger,
     func,
     text,
 )
@@ -77,6 +78,10 @@ class Ride(Base):
     finish_reason: Mapped[FinishReason | None] = mapped_column(
         Enum(FinishReason, name="finish_reason", values_callable=lambda e: [m.value for m in e])
     )
+    # for a battery finish: the reported charge and the threshold in force, so the explanation
+    # in the receipt, the history and a re-sent e-mail is reproducible from the row alone
+    finish_battery: Mapped[int | None] = mapped_column(SmallInteger)
+    finish_battery_threshold: Mapped[int | None] = mapped_column(SmallInteger)
     # tariff snapshot, per minute
     ride_rate_per_minute: Mapped[Decimal] = mapped_column(RATE)
     pause_rate_per_minute: Mapped[Decimal] = mapped_column(RATE)

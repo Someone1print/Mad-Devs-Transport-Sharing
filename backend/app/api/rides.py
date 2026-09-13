@@ -9,11 +9,9 @@ from app.api.deps import CurrentUser, api_error
 from app.core import clock
 from app.core.config import settings
 from app.db.session import get_db
-from app.models import Email, Ride, ServiceZone
-from app.realtime.hub import email_event, hub, ride_event, scooter_updated_event
-from app.schemas.email import EmailOut
+from app.models import ServiceZone
+from app.realtime.publish import announce_receipt, publish_ride_change
 from app.schemas.ride import RideOut, RideStart
-from app.schemas.scooter import ScooterOut
 from app.services import rides as ride_service
 from app.services.rides import RideError, Tariff
 
@@ -28,14 +26,6 @@ def current_tariff() -> Tariff:
         ride_rate_per_minute=settings.ride_rate_per_minute,
         pause_rate_per_minute=settings.pause_rate_per_minute,
     )
-
-
-async def publish_ride_change(ride: Ride, event_type: str) -> RideOut:
-    """Everyone learns the scooter's new state; the rider gets the ride event."""
-    out = RideOut.from_ride(ride)
-    await hub.broadcast(scooter_updated_event(ScooterOut.model_validate(ride.scooter)))
-    await hub.send_to_user(ride.user_id, ride_event(event_type, out))
-    return out
 
 
 def http_error(exc: RideError) -> HTTPException:
@@ -76,6 +66,16 @@ async def get_active_ride(user: CurrentUser, session: DbSession) -> RideOut | No
     return RideOut.from_ride(ride) if ride is not None else None
 
 
+@router.get("/rides/{ride_id}", summary="One of the caller's rides")
+async def get_ride(ride_id: int, user: CurrentUser, session: DbSession) -> RideOut:
+    """The client asks for a ride it remembers as active and finds it finished while it was away."""
+    try:
+        ride = await ride_service.get_ride(session, user.id, ride_id)
+    except RideError as exc:
+        raise http_error(exc) from exc
+    return RideOut.from_ride(ride)
+
+
 @router.post("/rides/{ride_id}/pause", summary="Pause the ride (pause tariff applies)")
 async def pause_ride(ride_id: int, user: CurrentUser, session: DbSession) -> RideOut:
     try:
@@ -112,9 +112,5 @@ async def finish_ride(ride_id: int, user: CurrentUser, session: DbSession) -> Ri
         if finished_now
         else RideOut.from_ride(ride)
     )
-    # the e-mail is announced when it is stored — normally now, or on the retry that healed it
-    if email_id is not None:
-        email = await session.get(Email, email_id)
-        if email is not None:
-            await hub.send_to_user(ride.user_id, email_event(EmailOut.model_validate(email)))
+    await announce_receipt(session, ride, email_id)
     return out

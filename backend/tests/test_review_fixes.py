@@ -33,16 +33,18 @@ def test_riding_is_sticky_against_telemetry(battery: int) -> None:
 async def test_low_battery_telemetry_during_a_ride_keeps_the_scooter_riding(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
+    # below LOW_BATTERY_THRESHOLD (15) but not below RIDE_AUTO_FINISH_BATTERY (10): the rider
+    # keeps the scooter; a battery strictly below 10 ends the ride (tests/test_auto_finish.py)
     user_id, scooter_id, booking_id = await booked(db_session)
     await ride_service.start_ride(db_session, user_id, booking_id, TARIFF, at(0))
 
     response = await client.post(
-        "/api/telemetry", json={"code": "KG-B1", "lat": 42.87, "lon": 74.59, "battery": 5}
+        "/api/telemetry", json={"code": "KG-B1", "lat": 42.87, "lon": 74.59, "battery": 12}
     )
 
     assert response.status_code == 200
     assert response.json()["status"] == "riding"
-    assert response.json()["battery"] == 5
+    assert response.json()["battery"] == 12
     db_session.expire_all()
     scooter = await db_session.get(Scooter, scooter_id)
     assert scooter is not None and scooter.status is ScooterStatus.RIDING

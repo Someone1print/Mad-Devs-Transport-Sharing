@@ -13,6 +13,7 @@ class PublicConfig(BaseModel):
     booking_ttl_seconds: int
     booking_warn_before_seconds: int
     low_battery_threshold: int
+    ride_auto_finish_battery: int
     ride_rate_per_minute: Decimal
     pause_rate_per_minute: Decimal
     currency: str
@@ -24,6 +25,7 @@ async def get_config() -> PublicConfig:
         booking_ttl_seconds=settings.booking_ttl_seconds,
         booking_warn_before_seconds=settings.booking_warn_before_seconds,
         low_battery_threshold=settings.low_battery_threshold,
+        ride_auto_finish_battery=settings.ride_auto_finish_battery,
         ride_rate_per_minute=settings.ride_rate_per_minute,
         pause_rate_per_minute=settings.pause_rate_per_minute,
         currency=CURRENCY,

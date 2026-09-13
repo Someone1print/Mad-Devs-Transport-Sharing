@@ -4,7 +4,7 @@ from decimal import Decimal
 from pydantic import BaseModel, Field
 
 from app.billing import CURRENCY, SegmentKind
-from app.models import Ride, RideStatus
+from app.models import FinishReason, Ride, RideStatus
 
 
 class RideStart(BaseModel):
@@ -44,6 +44,11 @@ class RideOut(BaseModel):
     pause_rate_per_minute: Decimal
     segments: list[RideSegmentOut]
     receipt: ReceiptOut | None
+    # why it ended: 'user' — «Завершить» inside the zone; 'battery' — telemetry reported a flat
+    # battery and the ride ended by itself (no zone check); with the charge and threshold then
+    finish_reason: FinishReason | None = None
+    finish_battery: int | None = None
+    finish_battery_threshold: int | None = None
 
     @classmethod
     def from_ride(cls, ride: Ride) -> "RideOut":
@@ -77,4 +82,7 @@ class RideOut(BaseModel):
                 for s in ride.segments
             ],
             receipt=receipt,
+            finish_reason=ride.finish_reason,
+            finish_battery=ride.finish_battery,
+            finish_battery_threshold=ride.finish_battery_threshold,
         )
