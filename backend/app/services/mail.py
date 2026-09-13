@@ -15,6 +15,11 @@ from app.models import Email, User
 MAIL_DOMAIN = "example.invalid"  # RFC 2606: guaranteed never to resolve
 LOCAL_PART_MAX = 64  # RFC 5321; also keeps a 64-char name of 4-letter expansions in String(255)
 EMAIL_MAX_LENGTH = 254  # RFC 5321 path limit; also the users.email column
+# the whitespace set JavaScript's \s matches, spelled out so both sides agree on every character
+# (str.isspace() differs on U+001C-U+001F and U+FEFF)
+_WHITESPACE = re.compile(
+    "[\t\n\v\f\r \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+)
 
 _TRANSLIT = {
     "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo", "ж": "zh",
@@ -33,7 +38,7 @@ def email_problem(value: str) -> str | None:
     never checked. The same keys come out of the client-side copy (frontend/src/account/email.ts);
     shared/email-cases.json pins both.
     """
-    if any(ch.isspace() for ch in value):
+    if _WHITESPACE.search(value):
         return "whitespace"
     if len(value) > EMAIL_MAX_LENGTH:
         return "too_long"
