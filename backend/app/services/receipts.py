@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.billing import CURRENCY
 from app.core.config import settings
-from app.models import Email, Ride, User
+from app.models import Email, FinishReason, Ride, User
 from app.services.mail import send_email
 
 
@@ -35,7 +35,20 @@ def utc_offset_label(moment: datetime) -> str:
     return f"UTC{sign}{hours}" + (f":{rest:02d}" if rest else "")
 
 
+def battery_explanation(ride: Ride) -> str | None:
+    """Why the ride ended without the rider, in the rider's words; None for a normal finish."""
+    if ride.finish_reason is not FinishReason.BATTERY:
+        return None
+    return (
+        f"Самокат разрядился: заряд упал до {ride.finish_battery} % (поездка останавливается "
+        f"автоматически при заряде ниже {ride.finish_battery_threshold} %). Самокат остался там, "
+        "где выключился, оплата — по фактическому времени до остановки."
+    )
+
+
 def receipt_subject(ride: Ride) -> str:
+    if ride.finish_reason is FinishReason.BATTERY:
+        return f"Поездка на {ride.scooter.code} завершена: самокат разрядился"
     return f"Чек за поездку на {ride.scooter.code}"
 
 
@@ -54,6 +67,7 @@ def receipt_body(ride: Ride) -> str:
         f"Здравствуйте, {ride.user.name}!",
         "",
         f"Поездка на самокате {ride.scooter.code} завершена ({window}).",
+        *(["", explanation] if (explanation := battery_explanation(ride)) else []),
         "",
         f"Ехали: {format_duration(ride.ride_seconds or 0)} — {ride.ride_cost} {CURRENCY}",
         f"Стояли: {format_duration(ride.pause_seconds or 0)} — {ride.pause_cost} {CURRENCY}",

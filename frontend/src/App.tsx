@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 
+import { updateEmail } from './account/email'
 import { useMailbox } from './account/useMailbox'
 import { useRideHistory } from './account/useRideHistory'
 
@@ -43,11 +44,34 @@ function App() {
   // the last ride that finished, from the finish response or the socket event — whichever is
   // first; both carry the same id, so the history reloads once
   const [lastFinishedId, setLastFinishedId] = useState(0)
-  const onFinished = useCallback((finished: Ride) => setLastFinishedId(finished.id), [])
+  const [account, setAccount] = useState<AccountTab | null>(null)
+  const onFinished = useCallback(
+    (finished: Ride) => {
+      setLastFinishedId(finished.id)
+      if (finished.finish_reason === 'battery') {
+        notify({
+          kind: 'error',
+          text: `Самокат ${finished.scooter_code} разрядился: поездка завершена автоматически`,
+        })
+      }
+    },
+    [notify],
+  )
   const ride = useRide({ userId, notify, onFinished })
+  const updateUser = currentUser.updateUser
+  const saveEmail = useCallback(
+    async (email: string) => {
+      if (userId === null) {
+        throw new Error('no user')
+      }
+      const saved = await updateEmail(userId, email)
+      updateUser(saved)
+      return saved
+    },
+    [userId, updateUser],
+  )
   const mailbox = useMailbox(userId)
   const history = useRideHistory(userId, lastFinishedId)
-  const [account, setAccount] = useState<AccountTab | null>(null)
   const clearBooking = booking.clear
   const handleRideEvent = ride.handleEvent
   const onRideEvent = useCallback(
@@ -56,24 +80,24 @@ function App() {
       if (event.type === 'ride.started') {
         clearBooking() // the booking was converted into this ride
       }
-      if (event.type === 'ride.finished') {
-        onFinished(event.ride) // the history has a new entry
-      }
+      // ride.finished reaches onFinished through useRide, like the other ways a ride can end
     },
-    [handleRideEvent, clearBooking, onFinished],
+    [handleRideEvent, clearBooking],
   )
   const onEmail = mailbox.handleEvent
   const refreshRide = ride.refresh
   const refreshBooking = booking.refresh
   const refreshMail = mailbox.refresh
   const refreshHistory = history.refresh
+  const refreshUser = currentUser.refresh
   const onReconnect = useCallback(() => {
     // events sent while the socket was down are gone: reload the personal state
     void refreshRide()
     void refreshBooking()
     void refreshMail()
     void refreshHistory()
-  }, [refreshRide, refreshBooking, refreshMail, refreshHistory])
+    void refreshUser()
+  }, [refreshRide, refreshBooking, refreshMail, refreshHistory, refreshUser])
   const { scooters, connection } = useScooterFeed({
     userId,
     onBookingEvent: booking.handleEvent,
@@ -196,13 +220,13 @@ function App() {
             now={now}
             busy={busy}
             currency={config.currency}
+            autoFinishBattery={config.ride_auto_finish_battery}
             onPause={() => void ride.pause()}
             onResume={() => void ride.resume()}
             onFinish={() => void ride.finish()}
           />
         )}
       </main>
-      {ride.finished && <ReceiptModal ride={ride.finished} onClose={ride.dismissReceipt} />}
       {account !== null && user && (
         <AccountPanel
           user={user}
@@ -218,11 +242,19 @@ function App() {
           onOpenMail={mailbox.markSeen}
           onRetryHistory={() => void history.refresh()}
           onRetryMail={() => void mailbox.refresh()}
+          onSaveEmail={saveEmail}
           onClose={() => setAccount(null)}
         />
       )}
+      {/* after the account panel in the DOM: a receipt that arrives while it is open stacks on top */}
+      {ride.finished && <ReceiptModal ride={ride.finished} onClose={ride.dismissReceipt} />}
       {currentUser.state.status !== 'ready' && (
-        <UserGate loading={currentUser.state.status === 'loading'} onRegister={currentUser.register} />
+        <UserGate
+          loading={currentUser.state.status === 'loading'}
+          known={currentUser.state.status === 'anonymous' ? currentUser.state.known : []}
+          onRegister={currentUser.register}
+          onContinue={currentUser.continueAs}
+        />
       )}
       <ToastStack toasts={toasts} onDismiss={dismiss} />
     </div>

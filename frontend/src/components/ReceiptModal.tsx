@@ -14,12 +14,19 @@ export function ReceiptModal({ ride, onClose }: ReceiptModalProps) {
   const totals = liveEstimate(ride, 0)
   const currency = receipt?.currency ?? 'KGS'
   return (
-    <div className="modal" role="dialog" aria-modal="true" aria-labelledby="receipt-title">
+    <div className="modal modal--top" role="dialog" aria-modal="true" aria-labelledby="receipt-title">
       <div className="modal__card" data-testid="receipt">
         <h2 id="receipt-title" className="modal__title">
-          Поездка завершена
+          {ride.finish_reason === 'battery' ? 'Самокат разрядился' : 'Поездка завершена'}
         </h2>
         <p className="modal__subtitle">Самокат {ride.scooter_code}</p>
+        {ride.finish_reason === 'battery' && (
+          <p className="modal__notice" data-testid="receipt-reason">
+            Поездка завершена автоматически: заряд упал до {ride.finish_battery} % (порог{' '}
+            {ride.finish_battery_threshold} %). Оплата — по времени до остановки; самокат остался
+            там, где выключился.
+          </p>
+        )}
         <table className="receipt">
           <tbody>
             <tr>

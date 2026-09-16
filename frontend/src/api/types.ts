@@ -16,6 +16,10 @@ export interface Scooter {
 export interface User {
   id: number
   name: string
+  /** Entered in the account; null until then. */
+  email: string | null
+  /** Where receipts go right now: the e-mail, or the stub derived from the name. */
+  mail_address: string
   created_at: string
 }
 
@@ -64,7 +68,13 @@ export interface Ride {
   pause_rate_per_minute: Money
   segments: RideSegment[]
   receipt: Receipt | null
+  /** 'user' — «Завершить» inside the zone; 'battery' — ended by itself on a flat battery. */
+  finish_reason: FinishReason | null
+  finish_battery: number | null
+  finish_battery_threshold: number | null
 }
+
+export type FinishReason = 'user' | 'battery'
 
 export interface Email {
   id: number
@@ -90,6 +100,7 @@ export interface PublicConfig {
   booking_ttl_seconds: number
   booking_warn_before_seconds: number
   low_battery_threshold: number
+  ride_auto_finish_battery: number
   ride_rate_per_minute: Money
   pause_rate_per_minute: Money
   currency: string

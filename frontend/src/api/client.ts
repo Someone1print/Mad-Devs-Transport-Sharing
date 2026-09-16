@@ -2,17 +2,20 @@
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
+  /** The rest of the server's `detail` object (e.g. `problem` for invalid_email). */
+  readonly detail: Record<string, unknown>
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, detail: Record<string, unknown> = {}) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.detail = detail
   }
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
   body?: unknown
   /** Identifies the caller via the X-User-Id header (no authentication in this demo). */
   userId?: number | null
@@ -43,6 +46,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 async function toApiError(response: Response, fallback: string): Promise<ApiError> {
   let code = 'http_error'
   let message = fallback
+  let extra: Record<string, unknown> = {}
   try {
     const data = (await response.json()) as { detail?: unknown }
     const detail = data.detail
@@ -50,11 +54,12 @@ async function toApiError(response: Response, fallback: string): Promise<ApiErro
       const typed = detail as { code?: string; message?: string }
       code = typed.code ?? code
       message = typed.message ?? message
+      extra = detail as Record<string, unknown>
     } else if (typeof detail === 'string') {
       message = detail
     }
   } catch {
     // body was not JSON; keep the fallback message
   }
-  return new ApiError(response.status, code, message)
+  return new ApiError(response.status, code, message, extra)
 }

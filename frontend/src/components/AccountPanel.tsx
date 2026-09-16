@@ -5,6 +5,7 @@ import type { LoadStatus } from '../account/useRideHistory'
 import type { Email, Ride, User } from '../api/types'
 import { formatMoney, liveEstimate } from '../ride/billing'
 import { formatDuration } from '../ride/rideState'
+import { EmailField } from './EmailField'
 
 export type AccountTab = 'rides' | 'mail'
 
@@ -22,6 +23,7 @@ interface AccountPanelProps {
   onOpenMail: () => void
   onRetryHistory: () => void
   onRetryMail: () => void
+  onSaveEmail: (email: string) => Promise<User>
   onClose: () => void
 }
 
@@ -78,7 +80,7 @@ function LoadFailed({ what, onRetry }: { what: string; onRetry: () => void }) {
 /** The rider's account: current ride, finished rides with receipts, and the mailbox. */
 export function AccountPanel(props: AccountPanelProps) {
   const { user, activeRide, history, historyStatus, emails, mailStatus, currency, now } = props
-  const { tab, onTabChange, onOpenMail, onRetryHistory, onRetryMail, onClose } = props
+  const { tab, onTabChange, onOpenMail, onRetryHistory, onRetryMail, onSaveEmail, onClose } = props
   const panelRef = useRef<HTMLDivElement>(null)
 
   // a dialog takes the focus and gives it back: keyboard users land inside, not on the map behind
@@ -150,7 +152,7 @@ export function AccountPanel(props: AccountPanelProps) {
             </h2>
             <span className="account__who">
               {user.name}
-              {emails[0] ? ` · ${emails[0].to_address}` : ''}
+              {user.mail_address ? ` · ${user.mail_address}` : ''}
             </span>
             <button type="button" className="account__close" aria-label="Закрыть" onClick={onClose}>
               ×
@@ -228,6 +230,11 @@ export function AccountPanel(props: AccountPanelProps) {
                         {ride.finished_at ? ` — ${formatWhen(ride.finished_at)}` : ''}
                       </span>
                     </div>
+                    {ride.finish_reason === 'battery' && (
+                      <div className="history__reason" data-testid="history-reason">
+                        Завершена автоматически: самокат разрядился (заряд {ride.finish_battery} %)
+                      </div>
+                    )}
                     <ReceiptRows ride={ride} currency={currency} />
                   </li>
                 ))}
@@ -244,6 +251,8 @@ export function AccountPanel(props: AccountPanelProps) {
             aria-labelledby="account-tab-mail"
             data-testid="mail-tab"
           >
+            <EmailField user={user} onSave={onSaveEmail} />
+            <h3 className="account__heading">Письма</h3>
             {mailStatus === 'error' && emails.length === 0 ? (
               <LoadFailed what="почту" onRetry={onRetryMail} />
             ) : emails.length === 0 ? (

@@ -15,6 +15,9 @@ function ride(overrides: Partial<Ride> = {}): Ride {
     pause_rate_per_minute: '1.50',
     segments: [],
     receipt: null,
+    finish_reason: null,
+    finish_battery: null,
+    finish_battery_threshold: null,
     ...overrides,
   }
 }

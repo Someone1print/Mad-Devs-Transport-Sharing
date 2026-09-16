@@ -10,6 +10,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    SmallInteger,
     func,
     text,
 )
@@ -26,6 +27,11 @@ class RideStatus(enum.StrEnum):
     ACTIVE = "active"  # едет
     PAUSED = "paused"  # на паузе, самокат стоит, идёт тариф паузы
     FINISHED = "finished"  # завершена, чек выставлен
+
+
+class FinishReason(enum.StrEnum):
+    USER = "user"  # the rider pressed «Завершить» inside the service zone
+    BATTERY = "battery"  # telemetry reported a flat battery: finished automatically, no zone check
 
 
 MONEY = Numeric(10, 2)
@@ -69,6 +75,13 @@ class Ride(Base):
     )
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finish_reason: Mapped[FinishReason | None] = mapped_column(
+        Enum(FinishReason, name="finish_reason", values_callable=lambda e: [m.value for m in e])
+    )
+    # for a battery finish: the reported charge and the threshold in force, so the explanation
+    # in the receipt, the history and a re-sent e-mail is reproducible from the row alone
+    finish_battery: Mapped[int | None] = mapped_column(SmallInteger)
+    finish_battery_threshold: Mapped[int | None] = mapped_column(SmallInteger)
     # tariff snapshot, per minute
     ride_rate_per_minute: Mapped[Decimal] = mapped_column(RATE)
     pause_rate_per_minute: Mapped[Decimal] = mapped_column(RATE)

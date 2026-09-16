@@ -21,6 +21,7 @@ from app.geo import Point, point_in_polygon
 from app.models import (
     Booking,
     BookingStatus,
+    FinishReason,
     Ride,
     RideSegment,
     RideStatus,
@@ -28,8 +29,9 @@ from app.models import (
     ScooterStatus,
     User,
 )
+from app.schemas.scooter import TelemetryIn
 from app.services.receipts import send_receipt
-from app.services.scooters import release_status
+from app.services.scooters import apply_telemetry, release_status
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +84,16 @@ async def get_active_ride(session: AsyncSession, user_id: int) -> Ride | None:
     return await session.scalar(
         select(Ride).where(Ride.user_id == user_id, Ride.status.in_(UNFINISHED))
     )
+
+
+async def get_ride(session: AsyncSession, user_id: int, ride_id: int) -> Ride:
+    """One ride of the user, any status (404 unknown, 403 someone else's)."""
+    ride = await session.get(Ride, ride_id)
+    if ride is None:
+        raise RideNotFoundError("ride_not_found", f"Ride {ride_id} not found")
+    if ride.user_id != user_id:
+        raise RideForbiddenError("not_your_ride", "This ride belongs to another user")
+    return ride
 
 
 async def _locked_ride(session: AsyncSession, user_id: int, ride_id: int) -> Ride:
@@ -162,6 +174,28 @@ async def _store_receipt(session: AsyncSession, ride: Ride) -> int | None:
         )
         return None
     return None if email is None else email.id
+
+
+def _settle(
+    ride: Ride, scooter: Scooter, now: datetime, reason: FinishReason, scooter_status: ScooterStatus
+) -> None:
+    """Close the open segment at `now`, write the receipt columns and release the scooter."""
+    now = _close_segment(ride, _open_segment(ride), now)
+    receipt = bill(
+        [Segment(s.kind, s.seconds or 0) for s in ride.segments],
+        ride.ride_rate_per_minute,
+        ride.pause_rate_per_minute,
+    )
+    ride.ride_seconds = receipt.ride_seconds
+    ride.pause_seconds = receipt.pause_seconds
+    ride.ride_cost = receipt.ride_cost
+    ride.pause_cost = receipt.pause_cost
+    ride.total_cost = receipt.total_cost
+    ride.finished_at = now
+    ride.finish_reason = reason
+    ride.status = RideStatus.FINISHED
+    scooter.status = scooter_status
+    scooter.paused = False
 
 
 async def _reload(session: AsyncSession, ride_id: int) -> Ride:
@@ -280,8 +314,9 @@ async def finish_ride(
     """Close the open segment, bill the ride and free the scooter.
 
     The scooter's own position (last telemetry) must be inside a service zone; the client
-    cannot fake it. A ride that is already finished is returned unchanged with finished_now=False;
-    that repeat is also the second chance for a receipt e-mail whose insert failed before.
+    cannot fake it. A ride that is already finished (by the rider or by a flat battery) is
+    returned unchanged with finished_now=False; that repeat is also the second chance for a
+    receipt e-mail whose insert failed before.
     """
     ride = await _locked_ride(session, user_id, ride_id)
     if ride.status is RideStatus.FINISHED:
@@ -298,21 +333,13 @@ async def finish_ride(
             "The scooter is outside the service zone; return inside it to finish the ride",
         )
 
-    now = _close_segment(ride, _open_segment(ride), now)
-    receipt = bill(
-        [Segment(s.kind, s.seconds or 0) for s in ride.segments],
-        ride.ride_rate_per_minute,
-        ride.pause_rate_per_minute,
+    _settle(
+        ride,
+        scooter,
+        now,
+        FinishReason.USER,
+        release_status(scooter.battery, low_battery_threshold),
     )
-    ride.ride_seconds = receipt.ride_seconds
-    ride.pause_seconds = receipt.pause_seconds
-    ride.ride_cost = receipt.ride_cost
-    ride.pause_cost = receipt.pause_cost
-    ride.total_cost = receipt.total_cost
-    ride.finished_at = now
-    ride.status = RideStatus.FINISHED
-    scooter.status = release_status(scooter.battery, low_battery_threshold)
-    scooter.paused = False
     # the receipt e-mail rides in the same transaction (receipt and mail together), isolated by
     # a savepoint so that its failure cannot block the finish; its dedup key (the ride id)
     # keeps concurrent finishes and retries at exactly one message
@@ -320,3 +347,88 @@ async def finish_ride(
     email_id = await _store_receipt(session, ride)
     await session.commit()
     return FinishResult(await _reload(session, ride_id), True, email_id)
+
+
+class TelemetryResult(NamedTuple):
+    scooter: Scooter
+    # set when this very report ended a ride (flat battery): the router announces it
+    finish: FinishResult | None
+
+
+async def unfinished_ride_id(session: AsyncSession, scooter_code: str) -> int | None:
+    """Id only, no lock and no ORM row: the FOR UPDATE load must be the first load of the ride,
+    otherwise the identity map would hand back a stale copy that never looks finished.
+    """
+    return await session.scalar(
+        select(Ride.id)
+        .join(Scooter, Scooter.id == Ride.scooter_id)
+        .where(Scooter.code == scooter_code, Ride.status.in_(UNFINISHED))
+    )
+
+
+async def auto_finish_ride(
+    session: AsyncSession,
+    ride_id: int,
+    lat: float,
+    lon: float,
+    battery: int,
+    threshold: int,
+    now: datetime,
+) -> FinishResult | None:
+    """The battery ran out mid-ride: bill up to `now`, no zone check, scooter unavailable.
+
+    Same lock order as the rider's finish (ride, then scooter), so a manual finish racing this
+    call serialises on the ride row; whoever comes second finds the ride finished. Returns None
+    when the ride was already finished — the caller then records the telemetry the normal way.
+    The reported position and charge are written to the scooter here, under the same lock.
+    """
+    ride = await session.scalar(
+        select(Ride)
+        .where(Ride.id == ride_id)
+        .with_for_update(of=Ride)
+        .execution_options(populate_existing=True)
+    )
+    if ride is None or ride.status is RideStatus.FINISHED:
+        return None
+    scooter = await _locked_scooter(session, ride.scooter_id)
+    scooter.lat, scooter.lon, scooter.battery = lat, lon, battery
+    ride.finish_battery = battery
+    ride.finish_battery_threshold = threshold
+    # unavailable explicitly, not through the low-battery rule: the rider did not choose where
+    # to stop, and a scooter that just ran flat must not be bookable whatever the thresholds say
+    _settle(ride, scooter, now, FinishReason.BATTERY, ScooterStatus.UNAVAILABLE)
+    await session.flush()
+    email_id = await _store_receipt(session, ride)
+    await session.commit()
+    return FinishResult(await _reload(session, ride_id), True, email_id)
+
+
+async def record_telemetry(
+    session: AsyncSession,
+    telemetry: TelemetryIn,
+    low_battery_threshold: int,
+    auto_finish_threshold: int,
+    now: datetime,
+) -> TelemetryResult | None:
+    """Store a telemetry report; a flat battery on a scooter in a ride ends that ride first.
+
+    Below `auto_finish_threshold` the ride is finished through the ride's own lock order (ride,
+    then scooter). If the ride turns out finished under the lock (the rider's finish won), or
+    there is no ride, the report is recorded the normal way. None: unknown scooter code.
+    """
+    if telemetry.battery < auto_finish_threshold:
+        ride_id = await unfinished_ride_id(session, telemetry.code)
+        if ride_id is not None:
+            finish = await auto_finish_ride(
+                session,
+                ride_id,
+                telemetry.lat,
+                telemetry.lon,
+                telemetry.battery,
+                auto_finish_threshold,
+                now,
+            )
+            if finish is not None:
+                return TelemetryResult(finish.ride.scooter, finish)
+    scooter = await apply_telemetry(session, telemetry, low_battery_threshold)
+    return None if scooter is None else TelemetryResult(scooter, None)
