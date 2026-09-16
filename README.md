@@ -242,6 +242,70 @@ docker compose start simulator
 - То же после обрыва WebSocket: после переподключения интерфейс перечитывает поездку, бронь,
   историю и почту с сервера.
 
+## Соответствие заданию
+
+Задание 11 «Шеринг транспорта» из документа «Задания Agentic Developer» плюс общие требования ко
+всем заданиям. Статусы: **сделано**, **сделано частично**, **не сделано**; если что-то сделано с
+упрощением или в собственной интерпретации, это написано в той же строке.
+
+### Общие требования
+
+| # | Требование | Статус | Где в коде | Чем проверяется |
+| --- | --- | --- | --- | --- |
+| 1 | Клиент-серверный продукт: отдельный backend и frontend, общаются по сети | сделано | `backend/` (FastAPI: REST + WebSocket), `frontend/` (React SPA); в Docker — nginx-прокси `frontend/nginx.conf` | `docker compose up --build`, карта на :3000 ходит в `/api` и `/api/ws`; `backend/tests/test_health.py` |
+| 2 | Backend: Python, Go или Node.js; причины выбора описаны | сделано | Python 3.12 + FastAPI, `backend/pyproject.toml` | обоснование стека — DEVLOG, «Выбор стека» (2026-09-08 20:05) |
+| 3 | Frontend: Vue или React | сделано | React 19 + Vite + TypeScript, `frontend/package.json` | `npm run build`, CI job `frontend` |
+| 4 | Хранилище: реляционная СУБД, предпочтительно PostgreSQL | сделано | PostgreSQL 16 (`docker-compose.yml`, сервис `db`), SQLAlchemy 2 + Alembic, `backend/alembic/versions/` | интеграционные тесты на настоящем PostgreSQL (`backend/tests/conftest.py`, маркер `db`), сервис `postgres:16` в CI |
+| 5 | Учётные записи и вход — на усмотрение, можно без входа | сделано (модель без входа: имя без пароля, сервер верит `X-User-Id`; последствия — ограничение 1 в «Состоянии проекта») | `backend/app/api/users.py`, `backend/app/api/deps.py`, `frontend/src/components/UserGate.tsx`, `frontend/src/user/` | `backend/tests/test_users.py`, `frontend/src/user/storage.test.ts`; сценарий «Бронирование» |
+| 6 | Промпты или лог решений сдаются с кодом: почему проект устроен так | сделано | [`PROMPTS.md`](PROMPTS.md) — промпты как есть; [`DEVLOG.md`](DEVLOG.md) — решения, допущения, выбор пакетов | записи с датой и временем по каждому этапу и каждому ревью |
+| 7 | Использование AI-агентов ожидается, скрывать не нужно | сделано | раздел «Как делался проект» | — |
+| 8 | Предварительные требования для развёртывания описаны | сделано | README: «Быстрый старт» (Docker с Compose v2), «Локальная разработка без Docker» (uv, Node 22+) | проход README из чистого клона — DEVLOG 2026-09-16 |
+| 9 | Локальный запуск: проект быстро разворачивается локально | сделано | `docker-compose.yml`: одна команда поднимает базу, миграции, сид, API, фронтенд, симулятор | чистый клон + `cp .env.example .env` + `docker compose up --build`: карта с 18 самокатами через ~1 минуту сборки |
+| 10 | Внешние сервисы можно эмулировать (почта — заглушкой) | сделано (почта — заглушка в базе, без SMTP) | `backend/app/services/mail.py`, таблица `emails`, `GET /api/emails`, вкладка «Почта» в кабинете | `backend/tests/test_mail.py`; сценарий «Кабинет и почта», скриншот `mailbox.jpg` |
+| 11 | Работает при двух одновременно открытых клиентах | сделано | хаб WebSocket `backend/app/realtime/hub.py`, события после коммита `backend/app/realtime/publish.py`; клиент `frontend/src/realtime/useScooterFeed.ts`; личность вкладки `frontend/src/user/storage.ts` (две вкладки — два пользователя) | `backend/tests/test_realtime.py`, `test_realtime_users.py`, `frontend/src/realtime/scooterStore.test.ts`, `storage.test.ts`; сквозные сценарии с двумя контекстами браузера — DEVLOG по каждому этапу |
+| 12 | Честное описание состояния: что работает, что нет, что не делали и почему | сделано | раздел «Состояние проекта» | — |
+| 13 | Доказуемость: проект доказывает свою работоспособность | сделано | 157 тестов бэкенда (юнит, интеграционные с базой, гонки), 40 симулятора, 70 фронтенда, общие векторы клиент/сервер в `shared/`; CI `.github/workflows/ci.yml` | зелёный CI на каждом PR, сценарии проверки и скриншоты в README, сквозные прогоны в DEVLOG |
+
+### Что мы ожидаем от вас
+
+| # | Ожидание | Статус | Где |
+| --- | --- | --- | --- |
+| 1 | Ссылка на репозиторий в GitHub | сделано | [github.com/Someone1print/Mad-Devs-Transport-Sharing](https://github.com/Someone1print/Mad-Devs-Transport-Sharing) |
+| 2 | Чем делали: модель, инструмент и почему | сделано | раздел «Как делался проект» |
+| 3 | Промпты, лог решений или экспорт сессии | сделано (промпты и лог решений; экспорт сессии в репозиторий не кладётся) | [`PROMPTS.md`](PROMPTS.md), [`DEVLOG.md`](DEVLOG.md) |
+| 4 | Ход работы во времени: временные метки от начала до конца | сделано | история коммитов и семь PR с 8 по 16 сентября 2026; у каждой записи DEVLOG и PROMPTS — дата и время (Asia/Bishkek), записанные в момент решения |
+| 5 | Описание проекта: как развернуть и в каком состоянии | сделано | этот README: «Быстрый старт», «Состояние проекта» |
+| 6 | Что сделали бы следующим заходом | сделано | раздел «Что дальше» |
+| 7 | Если брали за основу чужое решение, шаблон или генератор — указать | сделано | каркас фронтенда — шаблон `react-ts` из `npm create vite@latest` (DEVLOG 2026-09-08 20:19), каталог миграций — `alembic init`; готовых решений и бойлерплейтов не брали, остальное написано в проекте |
+
+### Задание 11. Шеринг транспорта — «должен включать»
+
+| # | Требование | Статус | Где в коде | Чем проверяется |
+| --- | --- | --- | --- | --- |
+| 1 | Карта с транспортом и его состоянием: свободен, забронирован, в поездке, недоступен | сделано | статусы `backend/app/models/scooter.py`, `GET /api/scooters` (`backend/app/api/scooters.py`); `frontend/src/components/CityMap.tsx`, `ScooterMarkers.tsx`, цвета `frontend/src/config/status.ts` | `backend/tests/test_scooters_list.py`, `frontend/src/config/status.test.ts`, `scooterStore.test.ts`; «Что проверить на карте», скриншот `map.jpg` |
+| 2 | Бронь: транспорт удерживается за пользователем на ограниченное время до старта | сделано | `backend/app/services/bookings.py`, `backend/app/api/bookings.py`, `backend/app/models/booking.py` (`expires_at`), снятие — `backend/app/services/booking_sweeper.py`; `frontend/src/booking/`, `frontend/src/components/MyBooking.tsx` | `backend/tests/test_bookings.py`, `test_bookings_lifecycle.py`, `test_booking_sweeper.py`, `frontend/src/booking/bookingState.test.ts`; сценарий «Бронирование» |
+| 3 | Поездка: старт, пауза, завершение; тарификация по минутам, пауза по отдельному тарифу | сделано (тариф — за минуту езды и за минуту паузы, начисление пропорционально секундам; правило округления — DEVLOG 2026-09-12 14:38) | `backend/app/services/rides.py` (`start_ride`, `pause_ride`, `resume_ride`, `finish_ride`), `backend/app/billing.py`, `backend/app/models/ride.py`; `frontend/src/ride/`, `RidePanel.tsx`, `ReceiptModal.tsx` | `backend/tests/test_rides_service.py`, `test_rides_api.py`, `test_billing.py`, `frontend/src/ride/billing.test.ts`, `rideState.test.ts`; сценарий «Поездка», скриншоты `ride-paused.jpg`, `ride-receipt.jpg` |
+| 4 | Зона обслуживания, внутри которой можно завершить поездку | сделано (одна зона из сида, редактируется через базу или `backend/app/zones.py`) | `backend/app/geo.py` (точка в полигоне без PostGIS), `backend/app/models/zone.py`, `GET /api/zones`; `frontend/src/components/ZoneLayer.tsx`, `frontend/src/ride/geo.ts` | `backend/tests/test_geo.py`, `test_zones.py`, `test_rides_service.py::test_finish_outside_zone_is_refused_and_ride_goes_on`, `frontend/src/ride/geo.test.ts`, общие точки в `shared/billing-cases.json` |
+| 5 | Кабинет пользователя: текущая поездка, история поездок и счетов | сделано (история броней не выведена — заданием не требуется) | `GET /api/rides/active`, `GET /api/rides` с чеками (`backend/app/api/rides.py`, `services/rides.py::list_finished_rides`); `frontend/src/components/AccountPanel.tsx`, `frontend/src/account/useRideHistory.ts` | `backend/tests/test_receipt_email_and_history.py::test_ride_history_lists_finished_rides_newest_first_with_receipts`, `…excludes_unfinished_rides_and_other_users`; сценарий «Кабинет и почта», скриншот `account.jpg` |
+| 6 | Симулятор транспорта: положение, движение, заряд | сделано (движение по прямым между точками, без дорог) | `simulator/scootersim/` (`fleet.py`, `geo.py`, `runner.py`, `client.py`), приём — `POST /api/telemetry` | `simulator/tests/` (40 тестов: движение, разряд, зарядка, парковка брони, поездки пользователей, переживание недоступности бэкенда), `backend/tests/test_telemetry.py`; движение видно сразу после `docker compose up` |
+
+### Задание 11 — «ожидаемое поведение»
+
+| # | Требование | Статус | Где в коде | Чем проверяется |
+| --- | --- | --- | --- | --- |
+| 1 | Состояние транспорта на карте меняется у всех сразу | сделано | `scooter.updated` всем клиентам после коммита: `backend/app/realtime/publish.py`, `hub.py`; `frontend/src/realtime/useScooterFeed.ts`, `scooterStore.ts` (устаревшие события отбрасываются по `updated_at`) | `backend/tests/test_realtime.py::test_telemetry_broadcasts_scooter_update`, `…websocket_endpoint_delivers_broadcasts`, `frontend/src/realtime/scooterStore.test.ts`; две вкладки — «Что проверить на карте» |
+| 2 | Один транспорт не могут забронировать двое, даже одновременно | сделано | `backend/app/services/bookings.py::create_booking` — `SELECT … FOR UPDATE` пользователя и самоката; частичные уникальные индексы на активную бронь — миграция `20260910_1856_2adf55bceaa7_create_bookings.py` | `backend/tests/test_bookings.py::test_concurrent_bookings_only_one_wins`, `…booking_waits_for_the_scooter_row_lock`, `…partial_unique_index_is_the_safety_net`; скриншот `booking-conflict.jpg` |
+| 3 | Бронь без старта за 15 минут снимается сама; за 3 минуты — уведомление | сделано (точность — период фоновой задачи, 2 с; интервалы настраиваются) | `BOOKING_TTL_SECONDS=900`, `BOOKING_WARN_BEFORE_SECONDS=180` в `backend/app/core/config.py`; `backend/app/services/booking_sweeper.py` (снятие по `expires_at`, `warned_at` — ровно одно уведомление); клиент — `frontend/src/booking/bookingState.ts`, тост и баннер | `backend/tests/test_booking_sweeper.py` (снятие, одно предупреждение, догон после перезапуска), `frontend/src/booking/bookingState.test.ts`; сценарий с `BOOKING_TTL_SECONDS=60`, скриншот `booking-warning.jpg` |
+| 4 | Счёт по минутам от старта до завершения, пауза по своему тарифу, копейки не теряются | сделано (интерпретация: тариф за минуту, начисление за секунды с округлением каждого сегмента до копейки; сумма сегментов равна итогу — `CHECK` в базе) | `backend/app/billing.py` (`segment_cost`, `bill`), `backend/app/services/rides.py::_settle`, `CHECK` в миграции `20260912_1442_0e048e1b2bdf_create_rides.py`; клиент считает так же — `frontend/src/ride/billing.ts` | `backend/tests/test_billing.py` (границы минут, многократные паузы, `test_no_kopeck_is_ever_lost`), `test_review_fixes.py` (`…rapid_pause_resume_toggling_still_bills_the_whole_ride`, `…database_refuses_an_inconsistent_receipt`), паритет клиент/сервер — `test_shared_cases.py` и `frontend/src/ride/sharedCases.test.ts` (417 сегментов, 150 чеков) |
+| 5 | Завершить поездку вне зоны нельзя; пользователь видит границу зоны | сделано | `backend/app/services/rides.py::finish_ride` — 409 `outside_service_zone` по последней телеметрии; граница — `frontend/src/components/ZoneLayer.tsx`, бейдж «в зоне / вне зоны» в `RidePanel.tsx` | `backend/tests/test_rides_api.py::test_finish_outside_zone_returns_409_with_a_clear_message`, `test_rides_service.py::test_finish_outside_zone_is_refused_and_ride_goes_on`, `…finish_without_any_zone_is_refused`; скриншот `ride-outside.jpg` |
+| 6 | Заряд кончился во время поездки — поездка завершается сама, письмо со счётом и пояснением | сделано (порог `RIDE_AUTO_FINISH_BATTERY`, по умолчанию 10 %, а не буквально 0; письмо — в почту-заглушку) | `backend/app/services/rides.py::auto_finish_ride` из `record_telemetry`, `finish_reason = battery`; пояснение в письме — `backend/app/services/receipts.py::battery_explanation`; клиент — тост и чек с пояснением (`ReceiptModal.tsx`) | `backend/tests/test_auto_finish.py` (счёт без проверки зоны, поездка на паузе, гонка телеметрии с ручным завершением — одна поездка и одно письмо, идемпотентность), `simulator/tests/test_fleet.py::test_user_ride_drains_by_time_on_top_of_distance`; сценарий «Разрядка в поездке», скриншоты `battery-receipt.jpg`, `battery-mail.jpg` |
+| 7 | Пропала связь — поездка продолжается, счёт идёт; при возврате актуальное состояние | сделано | состояние только на сервере; `GET /api/rides/active`, `GET /api/rides/{id}`; клиент — `frontend/src/ride/useRide.ts`, `rideMemory.ts`, перечитывание после реконнекта в `useScooterFeed.ts`, таймер от серверного `started_at` | `backend/tests/test_auto_finish.py::test_the_ride_survives_the_client_and_is_billed_for_the_whole_time`, `…get_ride_is_private`, `frontend/src/ride/rideMemory.test.ts`, `billing.test.ts` («restored … counts from its started_at»), `user/storage.test.ts`; сценарий «Пропала связь», скриншот `restored-ride.jpg` |
+| 8 | По завершении поездки приходит письмо со счётом. Одно | сделано (почта — заглушка) | `backend/app/services/receipts.py::send_receipt` в транзакции завершения, `backend/app/services/mail.py::send_email` — `dedup_key` с уникальным индексом и `ON CONFLICT DO NOTHING`; `email.sent` по WebSocket | `backend/tests/test_receipt_email_and_history.py` (ровно одно письмо, двойное завершение, параллельные завершения, сбой вставки и ретрай), `test_mail.py::test_concurrent_sends_with_one_key_store_exactly_one`; скриншот `mailbox.jpg` |
+| 9 | Транспорт с низким зарядом не показывается как свободный | сделано | `backend/app/services/scooters.py::status_after_telemetry`, `release_status`; порог `LOW_BATTERY_THRESHOLD` (15 %); сид помечает разряженные при вставке | `backend/tests/test_status_rule.py`, `test_telemetry.py::test_telemetry_below_threshold_marks_scooter_unavailable`, `test_seed.py::…applies_battery_rule`, `test_review_fixes.py` (разряженный самокат не выдаётся после отмены, снятия брони и при старте); серые `KG-006`, `KG-012` на карте |
+
+Ни одно требование не осталось в статусе «не сделано»; строки со скобками — упрощения и
+интерпретации, они же перечислены в «Состоянии проекта».
+
 ## Состояние проекта
 
 Шесть этапов закрыты, новых функций не планируется. Ниже — что есть на самом деле: что работает,
@@ -705,8 +769,11 @@ GitHub Actions запускается на push в `main` и на pull request'�
 
 - **Агент и модели.** Код, тесты, миграции и документация написаны агентом Claude Code (Anthropic)
   в настольном приложении; владелец проекта выбирал стек, ставил задачи по этапам, принимал
-  решения, ревьюил и мержил PR. Этапы 1–3 (каркас; самокаты, телеметрия и реалтайм; бронирование)
-  сделаны моделью Fable 5, этапы 4–7 (поездки и тарификация; почта и кабинет; разрядка,
+  решения, ревьюил и мержил PR. Claude Code выбран потому, что агент работает прямо в репозитории:
+  правит код, гоняет тесты, Docker и браузер (Playwright MCP), ведёт журналы — и вся его работа
+  остаётся в истории коммитов и в DEVLOG, как и требует задание. Этапы 1–3 (каркас; самокаты,
+  телеметрия и реалтайм; бронирование) сделаны моделью Fable 5; с этапа 4, где появились деньги,
+  гонки и панели агентов-ревьюеров, и до конца (поездки и тарификация; почта и кабинет; разрядка,
   восстановление и почта пользователя; финальная полировка) — Opus 5.
 - **Процесс.** Каждый этап начинается с промпта владельца — он сохранён как есть в
   [`PROMPTS.md`](PROMPTS.md); затем запись дизайна и допущений в [`DEVLOG.md`](DEVLOG.md),
