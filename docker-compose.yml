@@ -63,9 +63,17 @@ services:
     build: ./simulator
     environment:
       BACKEND_URL: http://backend:8000
+      # every knob the simulator reads, so a value in .env takes effect in Docker too
       SIM_ACTIVE_SCOOTERS: ${SIM_ACTIVE_SCOOTERS:-6}
       SIM_INTERVAL_SECONDS: ${SIM_INTERVAL_SECONDS:-1.5}
+      SIM_SPEED_KMH: ${SIM_SPEED_KMH:-40}
+      SIM_DRAIN_PER_KM: ${SIM_DRAIN_PER_KM:-4}
       SIM_USER_RIDE_DRAIN_PER_MINUTE: ${SIM_USER_RIDE_DRAIN_PER_MINUTE:-0.5}
+      SIM_RECHARGE_SECONDS: ${SIM_RECHARGE_SECONDS:-180}
+      SIM_MIN_RIDE_BATTERY: ${SIM_MIN_RIDE_BATTERY:-20}
+      SIM_HEARTBEAT_TICKS: ${SIM_HEARTBEAT_TICKS:-20}
+      SIM_HELD_HEARTBEAT_TICKS: ${SIM_HELD_HEARTBEAT_TICKS:-2}
+      SIM_REFRESH_TICKS: ${SIM_REFRESH_TICKS:-2}
     depends_on:
       backend:
         condition: service_healthy
