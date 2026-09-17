@@ -59,8 +59,9 @@ async def update_password(
     token: CurrentToken,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> UserOut:
-    """401 `wrong_password` when the current one does not match; 422 `invalid_password` for
-    the new one; every other device of the user is signed out."""
+    """403 `wrong_password` when the current one does not match (403, not 401: the session is
+    fine, and a 401 would make the client sign out); 422 `invalid_password` for the new one;
+    every other device of the user is signed out."""
     if (problem := password_problem(payload.new_password)) is not None:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -79,6 +80,6 @@ async def update_password(
         )
     except AuthError as exc:
         raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED, detail=api_error(exc.code, str(exc))
+            status.HTTP_403_FORBIDDEN, detail=api_error(exc.code, str(exc))
         ) from exc
     return UserOut.model_validate(user)

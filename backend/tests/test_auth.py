@@ -218,7 +218,8 @@ async def test_password_change_needs_the_current_one_and_signs_out_other_devices
         "/api/auth/login", json={"email": "dana@gmail.com", "password": "new password 1"}
     )
 
-    assert wrong.status_code == 401 and wrong.json()["detail"]["code"] == "wrong_password"
+    # 403, not 401: the session is valid, and a 401 would sign the client out
+    assert wrong.status_code == 403 and wrong.json()["detail"]["code"] == "wrong_password"
     assert short.status_code == 422 and short.json()["detail"]["problem"] == "too_short"
     assert changed.status_code == 200
     assert laptop_still_in.status_code == 200
