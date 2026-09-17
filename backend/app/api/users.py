@@ -17,10 +17,11 @@ router = APIRouter()
 def get_domain_checker() -> DomainChecker:
     """The DNS check of an address domain, configured from the settings at request time (so a
     test can switch it off); tests of the check itself override this with a fake resolver."""
+    lifetime = settings.email_domain_check_timeout_seconds
     return DomainChecker(
         enabled=settings.email_domain_check,
-        timeout=settings.email_domain_check_timeout_seconds,
-        resolver=system_resolver(),
+        timeout=lifetime,
+        resolver=system_resolver(per_try_timeout=lifetime / 2),
     )
 
 

@@ -9,7 +9,13 @@ from dataclasses import dataclass, field
 import dns.resolver
 import pytest
 
-from app.services.mail_domain import DomainChecker, mail_domain_problem
+from app.services.mail_domain import (
+    WARM_UP_DOMAIN,
+    DomainChecker,
+    mail_domain_problem,
+    system_resolver,
+    warm_up,
+)
 
 
 @dataclass
@@ -104,3 +110,53 @@ async def test_an_enabled_checker_uses_its_timeout() -> None:
 
     assert await checker.problem("gmail.con") == "no_mail_server"
     assert resolver.queries == [("gmail.con", "MX", 1.0)]
+
+
+def test_the_system_resolver_gets_two_tries_within_the_lifetime() -> None:
+    # a lost UDP packet costs one try, not the whole budget: per-try timeout is half the lifetime
+    resolver = system_resolver(per_try_timeout=1.0)
+
+    assert resolver.timeout == 1.0
+    assert system_resolver(per_try_timeout=1.0) is resolver  # built once per setting
+
+
+async def test_warm_up_retries_until_dns_answers_then_stops() -> None:
+    """Docker's DNS takes seconds to come alive after a container start; the warm-up keeps
+    asking until the first answer so the rider's first save does not hit the cold path."""
+    resolver = FakeResolver({"MX": dns.resolver.LifetimeTimeout()})
+    sleeps: list[float] = []
+
+    async def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        if len(sleeps) == 2:
+            resolver.answers["MX"] = [Rdata("mx.example.org.")]
+
+    checker = DomainChecker(enabled=True, timeout=2.0, resolver=resolver)
+    await warm_up(checker, attempts=10, pause=1.5, sleep=sleep)
+
+    assert [q[0] for q in resolver.queries] == [WARM_UP_DOMAIN] * 3
+    assert sleeps == [1.5, 1.5]
+
+
+async def test_warm_up_gives_up_quietly_and_never_runs_when_disabled() -> None:
+    resolver = FakeResolver({"MX": dns.resolver.LifetimeTimeout()})
+
+    async def sleep(seconds: float) -> None:
+        pass
+
+    await warm_up(
+        DomainChecker(enabled=True, timeout=2.0, resolver=resolver),
+        attempts=3,
+        pause=0,
+        sleep=sleep,
+    )
+    assert len(resolver.queries) == 3
+
+    resolver.queries.clear()
+    await warm_up(
+        DomainChecker(enabled=False, timeout=2.0, resolver=resolver),
+        attempts=3,
+        pause=0,
+        sleep=sleep,
+    )
+    assert resolver.queries == []

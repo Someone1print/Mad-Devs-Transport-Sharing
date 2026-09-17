@@ -14,9 +14,10 @@ and a warning is logged. Existence of the mailbox itself is never checked — th
 sending a message, and the mailbox is a stub.
 """
 
+import asyncio
 import functools
 import logging
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -74,16 +75,49 @@ class DomainChecker:
         return await mail_domain_problem(domain, resolver=self.resolver, lifetime=self.timeout)
 
 
+WARM_UP_DOMAIN = "gmail.com"  # any real mail domain; the demo suggests this one anyway
+
+
+async def warm_up(
+    checker: DomainChecker,
+    *,
+    attempts: int = 30,
+    pause: float = 2.0,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> None:
+    """Ask DNS once at startup, retrying until it answers (or `attempts` run out), so the
+    rider's first save does not hit the cold path: Docker's embedded DNS may take tens of
+    seconds to forward queries after a container start, and every check in that window would
+    time out and let a typo through. Never raises."""
+    if not checker.enabled:
+        return
+    for attempt in range(1, attempts + 1):
+        try:
+            await checker.resolver.resolve(WARM_UP_DOMAIN, "MX", lifetime=checker.timeout)
+        except (dns.exception.DNSException, OSError) as exc:
+            if attempt == attempts:
+                logger.warning("DNS still not answering after %d attempts: %r", attempts, exc)
+                return
+            await sleep(pause)
+        else:
+            logger.info("DNS check of e-mail domains ready (attempt %d)", attempt)
+            return
+
+
 @functools.cache
-def system_resolver() -> Resolver:
+def system_resolver(per_try_timeout: float) -> Resolver:
     """dnspython's async resolver over the system's nameservers (/etc/resolv.conf, or the OS),
-    built once; a host without any DNS configuration gets a resolver that always fails, which
-    `mail_domain_problem` treats as DNS trouble (address accepted, warning logged)."""
+    built once per setting. `per_try_timeout` is how long one attempt waits; with half the
+    lifetime a lost UDP packet costs one retry, not the whole budget. A host without any DNS
+    configuration gets a resolver that always fails, which `mail_domain_problem` treats as DNS
+    trouble (address accepted, warning logged)."""
     try:
-        return dns.asyncresolver.Resolver()
+        resolver = dns.asyncresolver.Resolver()
     except dns.exception.DNSException as exc:
         logger.warning("No DNS configuration, e-mail domains will not be checked: %r", exc)
         return _NoResolver(exc)
+    resolver.timeout = per_try_timeout
+    return resolver
 
 
 class _NoResolver:
