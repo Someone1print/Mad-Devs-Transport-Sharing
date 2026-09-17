@@ -20,6 +20,9 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 # The application-level sweeper loop would run against the dev database from inside the
 # TestClient lifespan; tests call the sweeper explicitly on the test database instead.
 settings.booking_sweeper_enabled = False
+# Tests never ask real DNS about e-mail domains: the check is off here (test_mail_domain.py and
+# test_users.py drive it with a fake resolver), and CI sets EMAIL_DOMAIN_CHECK=false as well.
+settings.email_domain_check = False
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:

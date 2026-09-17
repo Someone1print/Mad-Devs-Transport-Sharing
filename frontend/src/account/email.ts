@@ -4,10 +4,14 @@ import type { User } from '../api/types'
 /**
  * The same format rules as backend/app/services/mail.py (email_problem): whitespace, exactly one
  * `@`, a local part, a domain with a dot, at most 254 characters. shared/email-cases.json pins
- * both copies. Format only — the stub cannot send a confirmation code, so existence is never
- * checked. Lengths count code points, like Python's len().
+ * both copies. The server additionally asks DNS whether the domain receives mail at all
+ * (`no_mail_server`, backend/app/services/mail_domain.py) — the browser cannot; existence of the
+ * mailbox itself is never checked, the stub cannot send a confirmation code. Lengths count code
+ * points, like Python's len().
  */
 export type EmailProblem = 'whitespace' | 'too_long' | 'at_sign' | 'local_part' | 'domain'
+/** Reported by the server only: the domain exists but nobody receives mail there, or it does not exist. */
+export type ServerEmailProblem = 'no_mail_server'
 
 export const EMAIL_MAX_LENGTH = 254
 
@@ -40,12 +44,13 @@ export function emailProblem(value: string): EmailProblem | null {
   return null
 }
 
-export const EMAIL_HINTS: Record<EmailProblem, string> = {
+export const EMAIL_HINTS: Record<EmailProblem | ServerEmailProblem, string> = {
   whitespace: 'В адресе не должно быть пробелов',
   too_long: `Адрес длиннее ${EMAIL_MAX_LENGTH} символов`,
   at_sign: 'В адресе должен быть ровно один знак @',
   local_part: 'Перед @ должно быть имя ящика',
-  domain: 'После @ нужен домен с точкой, например example.com',
+  domain: 'После @ нужен домен с точкой, например gmail.com',
+  no_mail_server: 'У домена нет почтового сервера — проверьте адрес',
 }
 
 export function emailHint(problem: string): string {
