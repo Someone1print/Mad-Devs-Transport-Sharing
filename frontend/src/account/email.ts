@@ -10,8 +10,8 @@ import type { User } from '../api/types'
  * points, like Python's len().
  */
 export type EmailProblem = 'whitespace' | 'too_long' | 'at_sign' | 'local_part' | 'domain'
-/** Reported by the server only: the domain exists but nobody receives mail there, or it does not exist. */
-export type ServerEmailProblem = 'no_mail_server'
+/** Reported by the server only: no mail server behind the domain, or an empty address. */
+export type ServerEmailProblem = 'no_mail_server' | 'empty'
 
 export const EMAIL_MAX_LENGTH = 254
 
@@ -51,13 +51,14 @@ export const EMAIL_HINTS: Record<EmailProblem | ServerEmailProblem, string> = {
   local_part: 'Перед @ должно быть имя ящика',
   domain: 'После @ нужен домен с точкой, например gmail.com',
   no_mail_server: 'У домена нет почтового сервера — проверьте адрес',
+  empty: 'Введите адрес: по нему вы входите',
 }
 
 export function emailHint(problem: string): string {
   return (EMAIL_HINTS as Record<string, string>)[problem] ?? 'Проверьте формат адреса'
 }
 
-/** Save (or clear with an empty string) the address receipts go to. */
-export function updateEmail(userId: number, email: string): Promise<User> {
-  return request<User>('/api/users/me', { method: 'PATCH', body: { email }, userId })
+/** Change the address: it is the login and where receipts go, so it cannot be emptied. */
+export function updateEmail(email: string): Promise<User> {
+  return request<User>('/api/users/me', { method: 'PATCH', body: { email } })
 }

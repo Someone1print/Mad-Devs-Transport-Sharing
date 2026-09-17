@@ -77,7 +77,7 @@ export function useMailbox(userId: number | null): Mailbox {
       return
     }
     try {
-      applyLoaded(await fetchEmails(userId))
+      applyLoaded(await fetchEmails())
     } catch (error) {
       applyFailure(error)
     }
@@ -88,7 +88,7 @@ export function useMailbox(userId: number | null): Mailbox {
       return
     }
     let cancelled = false
-    fetchEmails(userId)
+    fetchEmails()
       .then((loaded) => {
         if (!cancelled) {
           applyLoaded(loaded)

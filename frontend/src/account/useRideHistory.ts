@@ -31,7 +31,7 @@ export function useRideHistory(userId: number | null, version: number): RideHist
       return
     }
     try {
-      const rides = await fetchRideHistory(userId)
+      const rides = await fetchRideHistory()
       setState({ userId, rides, status: 'ready' })
     } catch (error) {
       console.warn('Could not load the ride history', error)
@@ -48,7 +48,7 @@ export function useRideHistory(userId: number | null, version: number): RideHist
       return
     }
     let cancelled = false
-    fetchRideHistory(userId)
+    fetchRideHistory()
       .then((rides) => {
         if (!cancelled) {
           setState({ userId, rides, status: 'ready' })

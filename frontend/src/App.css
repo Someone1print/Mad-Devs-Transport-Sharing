@@ -671,21 +671,73 @@
   color: #2563eb;
 }
 
-.gate__known {
+.gate__switch {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 12px;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: #f1f5f9;
 }
 
-.gate__known .btn--ghost {
-  border-color: #cbd5e1;
+.gate__mode {
+  flex: 1;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #475569;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.gate__mode--active {
+  background: #ffffff;
   color: #0f172a;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.15);
 }
 
-.gate__or {
+.gate__field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.gate__label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.gate__input--invalid {
+  border-color: #dc2626;
+}
+
+.gate__hint--error {
+  color: #b91c1c;
+}
+
+.gate__note {
+  margin: 4px 0 0;
   color: #64748b;
+  font-size: 12px;
+}
+
+.password-field {
+  margin: 4px 0 8px;
+}
+
+.password-field .email-field__input {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.password-field .email-field__row .email-field__input {
+  margin-bottom: 0;
+}
+
+.account__note {
+  margin: 0 0 8px;
+  color: #475569;
   font-size: 13px;
 }
 

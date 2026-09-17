@@ -62,7 +62,7 @@ export function useBooking({ userId, notify }: UseBookingOptions): BookingAction
       return
     }
     try {
-      setActive(await fetchActiveBooking(userId))
+      setActive(await fetchActiveBooking())
     } catch (error) {
       console.warn('Could not load the active booking', error)
     }
@@ -73,7 +73,7 @@ export function useBooking({ userId, notify }: UseBookingOptions): BookingAction
       return
     }
     let cancelled = false
-    fetchActiveBooking(userId)
+    fetchActiveBooking()
       .then((booking) => {
         if (!cancelled) {
           setActive(booking)
@@ -126,7 +126,7 @@ export function useBooking({ userId, notify }: UseBookingOptions): BookingAction
       }
       setBusy(true)
       try {
-        const booking = await createBooking(userId, scooterCode)
+        const booking = await createBooking(scooterCode)
         setActive(booking)
         notify({
           kind: 'success',
@@ -147,7 +147,7 @@ export function useBooking({ userId, notify }: UseBookingOptions): BookingAction
     }
     setBusy(true)
     try {
-      await cancelBooking(userId, active.id)
+      await cancelBooking(active.id)
       setActive(null)
     } catch (error) {
       notify({ kind: 'error', text: describeError(error) })

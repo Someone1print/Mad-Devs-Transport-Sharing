@@ -1,28 +1,28 @@
 import { request } from './client'
 import type { Ride, Zone } from './types'
 
-export function fetchActiveRide(userId: number): Promise<Ride | null> {
-  return request<Ride | null>('/api/rides/active', { userId })
+export function fetchActiveRide(): Promise<Ride | null> {
+  return request<Ride | null>('/api/rides/active')
 }
 
-export function fetchRide(userId: number, rideId: number): Promise<Ride> {
-  return request<Ride>(`/api/rides/${rideId}`, { userId })
+export function fetchRide(rideId: number): Promise<Ride> {
+  return request<Ride>(`/api/rides/${rideId}`)
 }
 
-export function startRide(userId: number, bookingId: number): Promise<Ride> {
-  return request<Ride>('/api/rides', { method: 'POST', body: { booking_id: bookingId }, userId })
+export function startRide(bookingId: number): Promise<Ride> {
+  return request<Ride>('/api/rides', { method: 'POST', body: { booking_id: bookingId } })
 }
 
-export function pauseRide(userId: number, rideId: number): Promise<Ride> {
-  return request<Ride>(`/api/rides/${rideId}/pause`, { method: 'POST', userId })
+export function pauseRide(rideId: number): Promise<Ride> {
+  return request<Ride>(`/api/rides/${rideId}/pause`, { method: 'POST' })
 }
 
-export function resumeRide(userId: number, rideId: number): Promise<Ride> {
-  return request<Ride>(`/api/rides/${rideId}/resume`, { method: 'POST', userId })
+export function resumeRide(rideId: number): Promise<Ride> {
+  return request<Ride>(`/api/rides/${rideId}/resume`, { method: 'POST' })
 }
 
-export function finishRide(userId: number, rideId: number): Promise<Ride> {
-  return request<Ride>(`/api/rides/${rideId}/finish`, { method: 'POST', userId })
+export function finishRide(rideId: number): Promise<Ride> {
+  return request<Ride>(`/api/rides/${rideId}/finish`, { method: 'POST' })
 }
 
 export function fetchZones(): Promise<Zone[]> {

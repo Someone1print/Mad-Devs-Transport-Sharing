@@ -1,53 +1,40 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { ApiError } from '../api/client'
+import { login as apiLogin, logout as apiLogout, registerAccount } from '../api/auth'
+import { ApiError, SESSION_LOST_EVENT } from '../api/client'
 import type { User } from '../api/types'
-import { createUser, fetchMe } from '../api/users'
-import {
-  clearStoredUser,
-  forgetRider,
-  loadKnownRiders,
-  loadStoredUser,
-  saveStoredUser,
-  type StoredUser,
-} from './storage'
+import { fetchMe } from '../api/users'
 
 export type CurrentUserState =
   | { status: 'loading' }
-  | { status: 'anonymous'; known: StoredUser[] }
+  | { status: 'anonymous' }
   | { status: 'ready'; user: User }
 
 export interface CurrentUser {
   state: CurrentUserState
-  register: (name: string) => Promise<void>
-  /** Ride again as someone this browser already registered (validated with the server). */
-  continueAs: (rider: StoredUser) => Promise<void>
+  register: (name: string, email: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<void>
+  logout: () => Promise<void>
   /** The server changed the user (e.g. the e-mail was saved): keep the state in step. */
   updateUser: (user: User) => void
   /** Re-read the user from the server (after a reconnect: another tab may have changed it). */
   refresh: () => Promise<void>
-  signOut: () => void
 }
 
 /**
- * Restores the rider — this tab's, else the browser's most recent one — after checking the id
- * with the server; otherwise asks for a name (or offers the riders this browser knows).
+ * Who is signed in, according to the server: the HttpOnly session cookie set at sign-in is
+ * sent with every request, so on start we simply ask `GET /api/users/me`. Every tab of the
+ * browser shares that cookie — two tabs are one user; a second user needs a private window.
+ * A 401 anywhere (session expired or revoked from another device) drops back to the sign-in.
  */
 export function useCurrentUser(): CurrentUser {
-  const [state, setState] = useState<CurrentUserState>(() =>
-    loadStoredUser() ? { status: 'loading' } : { status: 'anonymous', known: loadKnownRiders() },
-  )
+  const [state, setState] = useState<CurrentUserState>({ status: 'loading' })
 
   useEffect(() => {
-    const stored = loadStoredUser()
-    if (!stored) {
-      return
-    }
     let cancelled = false
-    fetchMe(stored.id)
+    fetchMe()
       .then((user) => {
         if (!cancelled) {
-          saveStoredUser({ id: user.id, name: user.name })
           setState({ status: 'ready', user })
         }
       })
@@ -55,41 +42,39 @@ export function useCurrentUser(): CurrentUser {
         if (cancelled) {
           return
         }
-        if (error instanceof ApiError && error.status === 401) {
-          // the database was reset since this browser registered: start over
-          forgetRider(stored.id)
-          setState({ status: 'anonymous', known: loadKnownRiders() })
-        } else {
-          // backend unreachable right now: keep the stored identity, the map still works
-          setState({
-            status: 'ready',
-            user: { ...stored, email: null, mail_address: '', created_at: '' },
-          })
+        if (!(error instanceof ApiError && error.status === 401)) {
+          console.warn('Could not check the session', error)
         }
+        setState({ status: 'anonymous' })
       })
     return () => {
       cancelled = true
     }
   }, [])
 
-  const register = useCallback(async (name: string) => {
-    const user = await createUser(name)
-    saveStoredUser({ id: user.id, name: user.name })
-    setState({ status: 'ready', user })
+  useEffect(() => {
+    const onSessionLost = () => setState({ status: 'anonymous' })
+    window.addEventListener(SESSION_LOST_EVENT, onSessionLost)
+    return () => window.removeEventListener(SESSION_LOST_EVENT, onSessionLost)
   }, [])
 
-  const continueAs = useCallback(async (rider: StoredUser) => {
+  const register = useCallback(async (name: string, email: string, password: string) => {
+    const result = await registerAccount(name, email, password)
+    setState({ status: 'ready', user: result.user })
+  }, [])
+
+  const login = useCallback(async (email: string, password: string) => {
+    const result = await apiLogin(email, password)
+    setState({ status: 'ready', user: result.user })
+  }, [])
+
+  const logout = useCallback(async () => {
     try {
-      const user = await fetchMe(rider.id)
-      saveStoredUser({ id: user.id, name: user.name })
-      setState({ status: 'ready', user })
+      await apiLogout()
     } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        forgetRider(rider.id)
-        setState({ status: 'anonymous', known: loadKnownRiders() })
-      }
-      throw error
+      console.warn('Sign-out request failed; the session cookie may still be valid', error)
     }
+    setState({ status: 'anonymous' })
   }, [])
 
   const updateUser = useCallback((user: User) => {
@@ -101,16 +86,13 @@ export function useCurrentUser(): CurrentUser {
       return
     }
     try {
-      updateUser(await fetchMe(state.user.id))
+      updateUser(await fetchMe())
     } catch (error) {
-      console.warn('Could not refresh the user', error)
+      if (!(error instanceof ApiError && error.status === 401)) {
+        console.warn('Could not refresh the user', error)
+      }
     }
   }, [state, updateUser])
 
-  const signOut = useCallback(() => {
-    clearStoredUser()
-    setState({ status: 'anonymous', known: loadKnownRiders() })
-  }, [])
-
-  return { state, register, continueAs, updateUser, refresh, signOut }
+  return { state, register, login, logout, updateUser, refresh }
 }
