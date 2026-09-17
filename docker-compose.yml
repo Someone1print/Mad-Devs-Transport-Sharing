@@ -39,6 +39,9 @@ services:
       RIDE_AUTO_FINISH_BATTERY: ${RIDE_AUTO_FINISH_BATTERY:-10}
       EMAIL_DOMAIN_CHECK: ${EMAIL_DOMAIN_CHECK:-true}
       EMAIL_DOMAIN_CHECK_TIMEOUT_SECONDS: ${EMAIL_DOMAIN_CHECK_TIMEOUT_SECONDS:-2}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      PASSWORD_MIN_LENGTH: ${PASSWORD_MIN_LENGTH:-8}
     # Apply migrations (verifies the DB connection), seed the demo fleet, then serve the API
     command: sh -c "alembic upgrade head && python -m app.seed && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
