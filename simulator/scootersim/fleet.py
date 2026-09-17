@@ -7,15 +7,20 @@ from typing import Any
 from scootersim.config import Config
 from scootersim.geo import (
     BISHKEK_BBOX,
-    DEEP_CORE_SHARE,
-    RIDE_BBOX,
+    Point,
+    Polygon,
+    bbox_polygon,
     haversine_km,
     inner_box,
-    random_edge_point,
+    point_in_polygon,
     random_point,
-    random_point_near,
+    random_point_in_polygon,
     step_towards,
 )
+
+# Where a user ride wanders when the backend has no service zone at all: the central 40 % of
+# the city box. Finishing is impossible without a zone anyway; the demo just keeps moving.
+FALLBACK_RIDE_AREA: Polygon = bbox_polygon(inner_box(BISHKEK_BBOX, 0.3))
 
 
 class Phase(StrEnum):
@@ -36,8 +41,7 @@ class SimScooter:
     idle_ticks: int = 0
     parked: bool = False  # reserved, or a paused user ride: never moved by the simulator
     user_ride: bool = False  # a real user is riding it: keeps moving until the backend frees it
-    legs: int = 0  # legs driven in the current user ride (targets alternate edge / core)
-    user_ride_started: bool = False  # the leg counter was reset for the current user ride
+    user_ride_started: bool = False  # the demo target was dropped for the current user ride
 
     @property
     def battery_percent(self) -> int:
@@ -45,23 +49,45 @@ class SimScooter:
 
 
 class Fleet:
-    """Local state of the simulated scooters; `tick` advances it and says who must report."""
+    """Local state of the simulated scooters; `tick` advances it and says who must report.
 
-    def __init__(self, scooters: Iterable[SimScooter], config: Config, rng: random.Random) -> None:
+    `zones` are the backend's service zones: a user ride never leaves the zone it is in (the
+    rider, not the simulator, decides where to go — and a demo rider stays where finishing is
+    allowed). Demo rides of free scooters roam the whole city box.
+    """
+
+    def __init__(
+        self,
+        scooters: Iterable[SimScooter],
+        config: Config,
+        rng: random.Random,
+        zones: list[Polygon] | None = None,
+    ) -> None:
         self.scooters = list(scooters)
         self.config = config
         self.rng = rng
+        self.zones: list[Polygon] = [list(zone) for zone in zones or []] or [FALLBACK_RIDE_AREA]
         self._by_code = {scooter.code: scooter for scooter in self.scooters}
 
     @classmethod
     def from_server(
-        cls, payload: list[dict[str, Any]], config: Config, rng: random.Random, now: float
+        cls,
+        payload: list[dict[str, Any]],
+        config: Config,
+        rng: random.Random,
+        now: float,
+        zones: list[dict[str, Any]] | None = None,
     ) -> "Fleet":
+        """Build the fleet from GET /api/scooters and the zones from GET /api/zones."""
         scooters = [
             SimScooter(item["code"], item["lat"], item["lon"], float(item["battery"]))
             for item in payload
         ]
-        fleet = cls(scooters, config, rng)
+        polygons = [
+            [(float(p["lat"]), float(p["lon"])) for p in zone.get("points", [])]
+            for zone in zones or []
+        ]
+        fleet = cls(scooters, config, rng, zones=[z for z in polygons if len(z) >= 3])
         fleet.refresh_statuses(payload, now)
         return fleet
 
@@ -71,17 +97,19 @@ class Fleet:
         scooter.target = target
         scooter.idle_ticks = 0
 
-    def _next_user_target(self, scooter: SimScooter) -> tuple[float, float]:
-        """User rides alternate between the edge of the riding area (outside the service zone)
-        and its core (inside), so a demo can show both "finish refused" and "finish ok" within
-        a few minutes instead of waiting for random targets to cross the boundary."""
-        scooter.legs += 1
-        position = (scooter.lat, scooter.lon)
-        if scooter.legs % 2 == 1:
-            return random_edge_point(RIDE_BBOX, self.rng, near=position)
-        # back well inside the zone by the shortest way (the deep core lies inside the zone
-        # with a margin, so the ride does not hover on the boundary)
-        return random_point_near(inner_box(RIDE_BBOX, DEEP_CORE_SHARE), self.rng, near=position)
+    def _zone_of(self, point: Point) -> Polygon | None:
+        return next((zone for zone in self.zones if point_in_polygon(point, zone)), None)
+
+    def _next_user_target(self, scooter: SimScooter) -> Point:
+        """A random point inside the zone the rider is in; a rider outside every zone (a scooter
+        taken from a spot outside, or a stale position) heads into the first one."""
+        zone = self._zone_of((scooter.lat, scooter.lon)) or self.zones[0]
+        return random_point_in_polygon(zone, self.rng)
+
+    def _leaves_zone(self, scooter: SimScooter, new_position: Point) -> bool:
+        """Would this step take a rider who is inside a zone out of it?"""
+        zone = self._zone_of((scooter.lat, scooter.lon))
+        return zone is not None and not point_in_polygon(new_position, zone)
 
     def _stop(self, scooter: SimScooter) -> None:
         if scooter.phase is Phase.RIDING:
@@ -104,13 +132,12 @@ class Fleet:
             scooter.parked, scooter.user_ride, scooter.user_ride_started = True, False, False
             self._stop(scooter)
         elif status == "riding":
-            # a real user drives it: legs alternate edge / core; a pause keeps the current leg
+            # a real user drives it inside the service zone; a pause keeps the current leg
             was_user_ride = scooter.user_ride_started
             scooter.user_ride, scooter.user_ride_started = True, True
             scooter.parked = paused
             if not was_user_ride:
-                scooter.legs = 0
-                scooter.target = None  # a demo target would lie in the wrong area
+                scooter.target = None  # a demo target may lie outside the zone
             if paused:
                 scooter.phase = Phase.IDLE
                 scooter.idle_ticks = 0
@@ -168,6 +195,10 @@ class Fleet:
         assert scooter.target is not None
         step_km = self.config.speed_kmh * dt / 3600
         lat, lon, reached = step_towards(scooter.lat, scooter.lon, *scooter.target, step_km)
+        if scooter.user_ride and self._leaves_zone(scooter, (lat, lon)):
+            # the rider turns around at the border: no step this tick, a new target inside
+            scooter.target = self._next_user_target(scooter)
+            return
         moved_km = haversine_km(scooter.lat, scooter.lon, lat, lon)
         scooter.lat, scooter.lon = lat, lon
         drain = moved_km * self.config.drain_per_km

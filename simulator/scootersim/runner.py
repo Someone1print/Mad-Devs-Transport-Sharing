@@ -15,6 +15,8 @@ MAX_BACKOFF_SECONDS = 30.0
 class TelemetryClient(Protocol):
     def fetch_scooters(self) -> list[dict[str, Any]]: ...
 
+    def fetch_zones(self) -> list[dict[str, Any]]: ...
+
     def send_telemetry(self, code: str, lat: float, lon: float, battery: int) -> dict[str, Any]: ...
 
 
@@ -49,11 +51,13 @@ def run(
                     log.warning("Backend has no scooters yet, waiting")
                     sleep(config.interval_seconds)
                     continue
-                fleet = Fleet.from_server(payload, config, rng, now)
+                zones = client.fetch_zones()
+                fleet = Fleet.from_server(payload, config, rng, now, zones=zones)
                 log.info(
-                    "Fleet loaded: %d scooters, %d riding at a time",
+                    "Fleet loaded: %d scooters, %d riding at a time, %d service zone(s)",
                     len(payload),
                     config.active_scooters,
+                    len(zones),
                 )
             elif config.refresh_every_ticks > 0 and ticks % config.refresh_every_ticks == 0:
                 # bookings and recharges happen outside the simulator: re-read the statuses

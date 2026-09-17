@@ -1,16 +1,25 @@
+import random
+
 import pytest
 
 from scootersim.geo import (
     BISHKEK_BBOX,
+    bbox_polygon,
     haversine_km,
     in_bbox,
-    in_edge_band,
     inner_box,
-    random_edge_point,
+    point_in_polygon,
     random_point,
-    random_point_near,
+    random_point_in_polygon,
     step_towards,
 )
+
+SQUARE = [(0.0, 0.0), (0.0, 10.0), (10.0, 10.0), (10.0, 0.0)]
+# a U shape: the notch (lat 4..6, lon 5..10) lies outside
+CONCAVE = [
+    (0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (6.0, 10.0),
+    (6.0, 5.0), (4.0, 5.0), (4.0, 10.0), (0.0, 10.0),
+]  # fmt: skip
 
 
 def test_haversine_matches_known_distance() -> None:
@@ -37,8 +46,6 @@ def test_step_towards_snaps_to_target_when_close_enough() -> None:
 
 
 def test_random_point_stays_inside_bbox() -> None:
-    import random
-
     rng = random.Random(7)
     for _ in range(100):
         lat, lon = random_point(BISHKEK_BBOX, rng)
@@ -46,48 +53,33 @@ def test_random_point_stays_inside_bbox() -> None:
         assert BISHKEK_BBOX.min_lon <= lon <= BISHKEK_BBOX.max_lon
 
 
-def test_inner_box_and_edge_band_partition_the_bbox() -> None:
-    core = inner_box(BISHKEK_BBOX)
+def test_inner_box_shrinks_every_side() -> None:
+    core = inner_box(BISHKEK_BBOX, 0.3)
 
     assert core.min_lat > BISHKEK_BBOX.min_lat and core.max_lat < BISHKEK_BBOX.max_lat
+    assert core.min_lon > BISHKEK_BBOX.min_lon and core.max_lon < BISHKEK_BBOX.max_lon
     assert in_bbox((42.875, 74.600), core)
-    assert not in_edge_band((42.875, 74.600), BISHKEK_BBOX)
-    assert in_edge_band((42.856, 74.600), BISHKEK_BBOX)
-    assert not in_edge_band((42.800, 74.600), BISHKEK_BBOX)  # outside the box altogether
+    assert not in_bbox((42.856, 74.600), core)
 
 
-def test_random_edge_point_lies_in_the_outer_band() -> None:
-    import random
+def test_point_in_polygon_square_and_concave_shape() -> None:
+    assert point_in_polygon((5.0, 5.0), SQUARE)
+    assert not point_in_polygon((5.0, 10.5), SQUARE)
+    assert not point_in_polygon((-1.0, 5.0), SQUARE)
+    assert point_in_polygon((2.0, 7.0), CONCAVE)
+    assert not point_in_polygon((5.0, 7.0), CONCAVE)  # in the notch
+    assert not point_in_polygon((5.0, 5.0), [(0.0, 0.0), (1.0, 1.0)])  # degenerate: nothing inside
 
+
+def test_random_point_in_polygon_lands_inside_even_for_a_concave_shape() -> None:
     rng = random.Random(11)
-    for _ in range(200):
-        assert in_edge_band(random_edge_point(BISHKEK_BBOX, rng), BISHKEK_BBOX)
+    for _ in range(300):
+        assert point_in_polygon(random_point_in_polygon(CONCAVE, rng), CONCAVE)
 
 
-def test_random_point_near_stays_in_the_box_close_to_the_position() -> None:
-    import random
+def test_bbox_polygon_is_the_box_as_a_ring() -> None:
+    ring = bbox_polygon(BISHKEK_BBOX)
 
-    rng = random.Random(9)
-    core = inner_box(BISHKEK_BBOX)
-    outside_west = (42.875, BISHKEK_BBOX.min_lon)  # in the western edge band
-    for _ in range(50):
-        point = random_point_near(core, rng, near=outside_west)
-        assert in_bbox(point, core)
-        assert abs(point[0] - 42.875) <= 0.004
-        assert point[1] - core.min_lon <= 0.004
-
-
-def test_random_edge_point_near_a_position_picks_the_closest_side() -> None:
-    import random
-
-    rng = random.Random(3)
-    core = inner_box(BISHKEK_BBOX)
-    # just inside the core, close to its western side: the point must land in the western band
-    lat, lon = (core.min_lat + core.max_lat) / 2, core.min_lon + 0.0005
-    for _ in range(50):
-        point = random_edge_point(BISHKEK_BBOX, rng, near=(lat, lon))
-        assert in_edge_band(point, BISHKEK_BBOX)
-        assert point[1] < core.min_lon
-        assert (
-            abs(point[0] - lat) <= 0.003
-        )  # roughly opposite the rider, not anywhere along the side
+    assert len(ring) == 4
+    assert point_in_polygon((42.875, 74.600), ring)
+    assert not point_in_polygon((42.800, 74.600), ring)
