@@ -49,9 +49,13 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 def current_token(request: Request) -> str:
-    """The token of the current request (after `get_current_user` accepted it)."""
+    """The token of the current request; endpoints pair it with `CurrentUser`, which has
+    already checked it belongs to a live session."""
     token = session_token(request.headers.get("authorization"), request.cookies.get(SESSION_COOKIE))
-    assert token is not None
+    if token is None:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, detail=api_error("user_required", "Sign in to continue")
+        )
     return token
 
 

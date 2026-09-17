@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -164,9 +165,15 @@ async def register(
     else:
         logger.info("Legacy account %d claimed by %s", user.id, email)
         user.name, user.email, user.password_hash = name, email, password_hash
-    await session.flush()
-    token = await create_session(session, user, now)
-    await session.commit()
+    try:
+        await session.flush()
+        token = await create_session(session, user, now)
+        await session.commit()
+    except IntegrityError as exc:
+        # two registrations with one address at the same moment: both passed the check above,
+        # the partial unique index lets exactly one through
+        await session.rollback()
+        raise AuthError("email_taken", "An account with this e-mail already exists") from exc
     await session.refresh(user)
     return user, token
 

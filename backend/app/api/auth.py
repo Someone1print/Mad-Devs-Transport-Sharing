@@ -57,9 +57,9 @@ async def register_account(
 ) -> AuthOut:
     """E-mail (format and mail domain) and password (length) are checked here, uniqueness in
     the service; a legacy row without a password is claimed instead of creating a new one."""
-    await address_problem(payload.email, checker)  # raises 422 invalid_email
     if (problem := password_problem(payload.password)) is not None:
         raise invalid_password(problem)
+    await address_problem(payload.email, checker)  # raises 422 invalid_email; asks DNS last
     try:
         user, token = await register(
             session,

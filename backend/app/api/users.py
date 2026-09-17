@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.account_checks import address_problem, get_domain_checker
@@ -40,14 +41,19 @@ async def update_email(
     raw = payload.email or ""
     await address_problem(raw, checker)
     email = normalize_email(raw)
+    taken = HTTPException(
+        status.HTTP_409_CONFLICT,
+        detail=api_error("email_taken", "An account with this e-mail already exists"),
+    )
     owner = await registered_user_by_email(session, email)
     if owner is not None and owner.id != user.id:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail=api_error("email_taken", "An account with this e-mail already exists"),
-        )
+        raise taken
     user.email = email
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:  # a concurrent change to the same address
+        await session.rollback()
+        raise taken from exc
     await session.refresh(user)
     return UserOut.model_validate(user)
 

@@ -1,10 +1,11 @@
 """Accounts: registration, sign-in, sessions, sign-out, password change, legacy accounts."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 from httpx import AsyncClient
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import User, UserSession
 from app.services.auth import hash_password, password_problem
@@ -323,3 +324,35 @@ async def test_changing_the_email_keeps_it_unique_among_registered_accounts(
 async def test_hash_password_never_repeats_itself() -> None:
     first, second = await hash_password(PASSWORD), await hash_password(PASSWORD)
     assert first != second  # a fresh salt every time
+
+
+async def test_two_registrations_with_one_email_at_once_yield_one_account(
+    client: AsyncClient, committed_db: async_sessionmaker[AsyncSession]
+) -> None:
+    """Both requests pass the uniqueness check before either commits; the partial unique index
+    stops the second one, and it must surface as 409, not as a crash."""
+    payload = {"name": "Dana", "email": "dana@gmail.com", "password": PASSWORD}
+    responses = await asyncio.gather(
+        *(client.post("/api/auth/register", json=payload) for _ in range(3))
+    )
+
+    assert sorted(r.status_code for r in responses) == [201, 409, 409]
+    for response in responses:
+        if response.status_code == 409:
+            assert response.json()["detail"]["code"] == "email_taken"
+    async with committed_db() as session:
+        accounts = await session.scalar(
+            select(func.count()).select_from(User).where(User.email == "dana@gmail.com")
+        )
+    assert accounts == 1
+
+
+async def test_unauthenticated_password_change_and_logout_are_401(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    change = await client.post(
+        "/api/users/me/password", json={"current_password": "a", "new_password": "b" * 8}
+    )
+    logout = await client.post("/api/auth/logout")
+
+    assert change.status_code == 401 and logout.status_code == 401
