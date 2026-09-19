@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import settings
 from app.models import Booking, BookingStatus, Scooter, ScooterStatus, User
 from app.realtime.hub import hub
+from app.services.auth import create_session, hash_password
 
 
 class FakeSocket:
@@ -20,10 +21,25 @@ class FakeSocket:
         self.sent.append(message)
 
 
-async def make_user(session: AsyncSession, name: str = "Rider") -> User:
-    user = User(name=name)
+# session tokens of the users the tests create, so `headers()` can stay a plain function
+TOKENS: dict[int, str] = {}
+USER_IDS: dict[str, int] = {}
+_password_hash: str | None = None
+
+
+async def make_user(session: AsyncSession, name: str = "Rider", *, legacy: bool = False) -> User:
+    """A registered rider with an open session (`legacy=True`: a pre-auth row without a password,
+    still given a session so tests can act as it)."""
+    global _password_hash
+    if _password_hash is None:
+        _password_hash = await hash_password("correct horse")  # argon2 is slow: hash once
+    user = User(name=name, password_hash=None if legacy else _password_hash)
     session.add(user)
     await session.commit()
+    token = await create_session(session, user, now=datetime.now(UTC))
+    await session.commit()
+    TOKENS[user.id] = token
+    USER_IDS[token] = user.id
     return user
 
 
@@ -37,7 +53,12 @@ async def make_scooter(
 
 
 def headers(user: User) -> dict[str, str]:
-    return {"X-User-Id": str(user.id)}
+    return {"Authorization": f"Bearer {TOKENS[user.id]}"}
+
+
+def user_id(hdrs: dict[str, str]) -> int:
+    """The user behind a `headers()` dict, for binding a fake socket in the hub."""
+    return USER_IDS[hdrs["Authorization"].removeprefix("Bearer ")]
 
 
 async def test_booking_reserves_scooter_for_the_user(

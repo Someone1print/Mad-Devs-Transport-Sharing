@@ -11,12 +11,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings, settings
-from app.models import Booking, BookingStatus, Ride, RideStatus, Scooter, ScooterStatus
+from app.models import Booking, BookingStatus, Ride, RideStatus, Scooter, ScooterStatus, User
 from app.services import rides as ride_service
 from app.services.bookings import create_booking
 from app.services.rides import RideConflictError
 from app.services.scooters import status_after_telemetry
-from tests.test_bookings import make_scooter, make_user
+from tests.test_bookings import headers, make_scooter, make_user
 from tests.test_rides_service import INSIDE, T0, TARIFF, ZONES, at, booked, place
 
 THRESHOLD = 15
@@ -254,9 +254,9 @@ async def test_outside_zone_message_is_english_like_every_other_api_error(
     user = await db_session.get(Booking, booking_id)
     assert user is not None
 
-    response = await client.post(
-        f"/api/rides/{ride.id}/finish", headers={"X-User-Id": str(user_id)}
-    )
+    rider = await db_session.get(User, user_id)
+    assert rider is not None
+    response = await client.post(f"/api/rides/{ride.id}/finish", headers=headers(rider))
 
     assert response.status_code == 409
     assert response.json()["detail"] == {

@@ -6,8 +6,9 @@ import type { Email, Ride, User } from '../api/types'
 import { formatMoney, liveEstimate } from '../ride/billing'
 import { formatDuration } from '../ride/rideState'
 import { EmailField } from './EmailField'
+import { PasswordField } from './PasswordField'
 
-export type AccountTab = 'rides' | 'mail'
+export type AccountTab = 'rides' | 'mail' | 'account'
 
 interface AccountPanelProps {
   user: User
@@ -24,6 +25,8 @@ interface AccountPanelProps {
   onRetryHistory: () => void
   onRetryMail: () => void
   onSaveEmail: (email: string) => Promise<User>
+  onChangePassword: (currentPassword: string, newPassword: string) => Promise<void>
+  onLogout: () => void
   onClose: () => void
 }
 
@@ -81,6 +84,7 @@ function LoadFailed({ what, onRetry }: { what: string; onRetry: () => void }) {
 export function AccountPanel(props: AccountPanelProps) {
   const { user, activeRide, history, historyStatus, emails, mailStatus, currency, now } = props
   const { tab, onTabChange, onOpenMail, onRetryHistory, onRetryMail, onSaveEmail, onClose } = props
+  const { onChangePassword, onLogout } = props
   const panelRef = useRef<HTMLDivElement>(null)
 
   // a dialog takes the focus and gives it back: keyboard users land inside, not on the map behind
@@ -182,6 +186,18 @@ export function AccountPanel(props: AccountPanelProps) {
             >
               Почта{emails.length > 0 ? ` (${emails.length})` : ''}
             </button>
+            <button
+              type="button"
+              role="tab"
+              id="account-tab-account"
+              aria-selected={tab === 'account'}
+              aria-controls="account-panel-account"
+              className={`tabs__tab ${tab === 'account' ? 'tabs__tab--active' : ''}`}
+              onClick={() => onTabChange('account')}
+              data-testid="tab-account"
+            >
+              Аккаунт
+            </button>
           </div>
         </div>
 
@@ -251,7 +267,6 @@ export function AccountPanel(props: AccountPanelProps) {
             aria-labelledby="account-tab-mail"
             data-testid="mail-tab"
           >
-            <EmailField user={user} onSave={onSaveEmail} />
             <h3 className="account__heading">Письма</h3>
             {mailStatus === 'error' && emails.length === 0 ? (
               <LoadFailed what="почту" onRetry={onRetryMail} />
@@ -273,6 +288,30 @@ export function AccountPanel(props: AccountPanelProps) {
                 ))}
               </ul>
             )}
+          </section>
+        )}
+
+        {tab === 'account' && (
+          <section
+            className="account__section"
+            role="tabpanel"
+            id="account-panel-account"
+            aria-labelledby="account-tab-account"
+            data-testid="account-tab"
+          >
+            <h3 className="account__heading">Почта</h3>
+            <p className="account__note">По ней вы входите, на неё приходят чеки.</p>
+            <EmailField user={user} onSave={onSaveEmail} />
+            <h3 className="account__heading">Пароль</h3>
+            <PasswordField onChange={onChangePassword} />
+            <h3 className="account__heading">Сеанс</h3>
+            <p className="account__note">
+              Вы вошли как {user.name}. Все вкладки этого браузера — это вы; выход закрывает сеанс
+              на этом устройстве.
+            </p>
+            <button type="button" className="btn btn--ghost btn--small" onClick={onLogout} data-testid="logout">
+              Выйти
+            </button>
           </section>
         )}
       </div>

@@ -5,43 +5,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.users import get_domain_checker
 from app.main import app
 from app.services.mail_domain import DomainChecker
+from tests.test_auth import PASSWORD, bearer, register
 from tests.test_bookings import make_scooter
 from tests.test_mail_domain import FakeResolver, Rdata
 from tests.test_receipt_email_and_history import finished_ride
 
 
-async def test_create_user_returns_id_and_name(
+async def test_me_returns_the_user_behind_the_session(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    response = await client.post("/api/users", json={"name": "  Айбек  "})
+    user, token = await register(client, name="  Айбек  ", email="aibek@gmail.com")
 
-    assert response.status_code == 201
-    body = response.json()
-    assert body["name"] == "Айбек"
-    assert isinstance(body["id"], int)
-    assert "created_at" in body
-
-
-async def test_create_user_rejects_blank_name(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    response = await client.post("/api/users", json={"name": "   "})
-
-    assert response.status_code == 422
-
-
-async def test_me_returns_the_user_named_in_the_header(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    created = (await client.post("/api/users", json={"name": "Dana"})).json()
-
-    response = await client.get("/api/users/me", headers={"X-User-Id": str(created["id"])})
+    response = await client.get("/api/users/me", headers=bearer(token))
 
     assert response.status_code == 200
-    assert response.json() == created
+    assert response.json() == user
+    assert user["name"] == "Айбек" and isinstance(user["id"], int) and "created_at" in user
 
 
-async def test_me_without_header_is_unauthorized(
+async def test_me_without_a_session_is_unauthorized(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
     response = await client.get("/api/users/me")
@@ -50,39 +32,31 @@ async def test_me_without_header_is_unauthorized(
     assert response.json()["detail"]["code"] == "user_required"
 
 
-async def test_me_with_unknown_or_malformed_id_is_unauthorized(
+async def test_email_can_be_changed_and_is_validated(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    unknown = await client.get("/api/users/me", headers={"X-User-Id": "999999"})
-    malformed = await client.get("/api/users/me", headers={"X-User-Id": "abc"})
+    _, token = await register(client, email="dana@gmail.com")
+    client.cookies.clear()  # act through the bearer header only, like a script would
+    hdrs = bearer(token)
 
-    assert unknown.status_code == 401
-    assert malformed.status_code == 401
-
-
-async def test_email_can_be_set_cleared_and_is_validated(
-    client: AsyncClient, db_session: AsyncSession
-) -> None:
-    created = (await client.post("/api/users", json={"name": "Dana"})).json()
-    hdrs = {"X-User-Id": str(created["id"])}
-    assert created["email"] is None
-
-    saved = await client.patch("/api/users/me", json={"email": "  dana@example.com "}, headers=hdrs)
+    saved = await client.patch("/api/users/me", json={"email": "  Dana2@gmail.com "}, headers=hdrs)
     me = await client.get("/api/users/me", headers=hdrs)
     rejected = await client.patch("/api/users/me", json={"email": "dana@example"}, headers=hdrs)
     still_me = await client.get("/api/users/me", headers=hdrs)
-    cleared = await client.patch("/api/users/me", json={"email": ""}, headers=hdrs)
     anonymous = await client.patch("/api/users/me", json={"email": "x@y.z"})
 
     assert saved.status_code == 200
-    assert saved.json()["email"] == "dana@example.com"  # trimmed, stored as typed otherwise
-    assert me.json()["email"] == "dana@example.com"
+    assert saved.json()["email"] == "dana2@gmail.com"  # trimmed and lower-cased: it is the login
+    assert me.json()["email"] == "dana2@gmail.com"
     assert rejected.status_code == 422
     assert rejected.json()["detail"]["code"] == "invalid_email"
     assert rejected.json()["detail"]["problem"] == "domain"
-    assert still_me.json()["email"] == "dana@example.com"  # a rejected value changes nothing
-    assert cleared.status_code == 200 and cleared.json()["email"] is None
+    assert still_me.json()["email"] == "dana2@gmail.com"  # a rejected value changes nothing
     assert anonymous.status_code == 401
+    signed_in = await client.post(
+        "/api/auth/login", json={"email": "dana2@gmail.com", "password": PASSWORD}
+    )
+    assert signed_in.status_code == 200
 
 
 async def test_receipt_goes_to_the_entered_address_or_the_stub(
@@ -107,33 +81,42 @@ async def test_receipt_goes_to_the_entered_address_or_the_stub(
     assert [e["to_address"] for e in emails] == ["rider@example.com", "rider@example.invalid"]
 
 
-async def test_saving_an_address_checks_that_its_domain_receives_mail(
+async def test_saving_or_registering_an_address_checks_that_its_domain_receives_mail(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    """The DNS check runs after the format check and only for a non-empty address; the app's
+    """The DNS check runs after the format check, at registration and on change; the app's
     default checker is switched off in tests, so a fake resolver is injected here."""
     resolver = FakeResolver({"MX": dns.resolver.NXDOMAIN()})
     app.dependency_overrides[get_domain_checker] = lambda: DomainChecker(
         enabled=True, timeout=2.0, resolver=resolver
     )
     try:
-        created = (await client.post("/api/users", json={"name": "Dana"})).json()
-        hdrs = {"X-User-Id": str(created["id"])}
+        typo_at_signup = await client.post(
+            "/api/auth/register",
+            json={"name": "Dana", "email": "dana@gmail.con", "password": PASSWORD},
+        )
+        resolver.answers["MX"] = [Rdata("alt1.gmail-smtp-in.l.google.com.")]
+        _, token = await register(client, email="dana@gmail.com")
+        hdrs = bearer(token)
+        resolver.answers["MX"] = dns.resolver.NXDOMAIN()
 
         typo = await client.patch("/api/users/me", json={"email": "dana@gmail.con"}, headers=hdrs)
         bad_format = await client.patch("/api/users/me", json={"email": "dana@x"}, headers=hdrs)
-        queries_so_far = list(resolver.queries)
+        queries_so_far = [q[0] for q in resolver.queries]
         resolver.answers["MX"] = [Rdata("alt1.gmail-smtp-in.l.google.com.")]
-        saved = await client.patch("/api/users/me", json={"email": "dana@gmail.com"}, headers=hdrs)
-        cleared = await client.patch("/api/users/me", json={"email": ""}, headers=hdrs)
+        saved = await client.patch("/api/users/me", json={"email": "dana2@gmail.com"}, headers=hdrs)
     finally:
         app.dependency_overrides.pop(get_domain_checker, None)
 
+    assert typo_at_signup.status_code == 422
+    assert typo_at_signup.json()["detail"]["problem"] == "no_mail_server"
     assert typo.status_code == 422
     assert typo.json()["detail"]["code"] == "invalid_email"
     assert typo.json()["detail"]["problem"] == "no_mail_server"
     assert bad_format.json()["detail"]["problem"] == "domain"
-    assert queries_so_far == [("gmail.con", "MX", 2.0)]  # a format problem never reaches DNS
-    assert saved.status_code == 200 and saved.json()["email"] == "dana@gmail.com"
-    assert cleared.status_code == 200 and cleared.json()["email"] is None
-    assert [q[0] for q in resolver.queries] == ["gmail.con", "gmail.com"]  # clearing asks nothing
+    assert queries_so_far == [
+        "gmail.con",
+        "gmail.com",
+        "gmail.con",
+    ]  # a format problem never reaches DNS
+    assert saved.status_code == 200 and saved.json()["email"] == "dana2@gmail.com"

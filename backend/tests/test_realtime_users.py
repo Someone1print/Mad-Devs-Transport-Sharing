@@ -2,6 +2,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+from app.api.ws import get_token_authenticator
 from app.main import app
 from app.realtime.hub import ScooterHub, hub
 
@@ -44,23 +45,74 @@ async def test_unregister_forgets_the_user_binding() -> None:
     assert local_hub.client_count == 0
 
 
-def test_websocket_identify_message_binds_the_connection() -> None:
-    with TestClient(app) as test_client, test_client.websocket_connect("/api/ws") as websocket:
-        websocket.send_json({"type": "identify", "user_id": 42})
-        # the server processes identify asynchronously; a public broadcast proves the loop runs
-        test_client.portal.call(hub.broadcast, {"type": "ping"})
-        assert websocket.receive_json() == {"type": "ping"}
+def bind_fake_tokens() -> None:
+    """Sockets are bound through the app's token authenticator; tests map tokens by hand."""
 
-        delivered = test_client.portal.call(hub.send_to_user, 42, {"type": "booking.expiring"})
+    async def authenticate(token: str | None) -> int | None:
+        return {"tok-42": 42}.get(token or "")
 
-        assert delivered == 1
-        assert websocket.receive_json() == {"type": "booking.expiring"}
+    app.dependency_overrides[get_token_authenticator] = lambda: authenticate
+
+
+def test_websocket_identify_with_a_token_binds_the_connection() -> None:
+    bind_fake_tokens()
+    try:
+        with TestClient(app) as test_client, test_client.websocket_connect("/api/ws") as websocket:
+            websocket.send_json({"type": "identify", "token": "tok-42"})
+            # the server processes identify asynchronously; a public broadcast proves the loop runs
+            test_client.portal.call(hub.broadcast, {"type": "ping"})
+            assert websocket.receive_json() == {"type": "ping"}
+
+            delivered = test_client.portal.call(hub.send_to_user, 42, {"type": "booking.expiring"})
+
+            assert delivered == 1
+            assert websocket.receive_json() == {"type": "booking.expiring"}
+    finally:
+        app.dependency_overrides.pop(get_token_authenticator, None)
+
+
+def test_websocket_session_cookie_binds_the_connection_at_the_handshake() -> None:
+    bind_fake_tokens()
+    try:
+        with (
+            TestClient(app, cookies={"session": "tok-42"}) as test_client,
+            test_client.websocket_connect("/api/ws") as websocket,
+        ):
+            test_client.portal.call(hub.broadcast, {"type": "ping"})
+            assert websocket.receive_json() == {"type": "ping"}
+
+            delivered = test_client.portal.call(hub.send_to_user, 42, {"type": "ride.started"})
+
+            assert delivered == 1
+            assert websocket.receive_json() == {"type": "ride.started"}
+    finally:
+        app.dependency_overrides.pop(get_token_authenticator, None)
+
+
+def test_websocket_without_a_token_gets_only_public_events() -> None:
+    """A user id in `identify` is no longer trusted: without a valid token the socket stays
+    anonymous and personal events are not delivered to it."""
+    bind_fake_tokens()
+    try:
+        with TestClient(app) as test_client, test_client.websocket_connect("/api/ws") as websocket:
+            websocket.send_json({"type": "identify", "user_id": 42})
+            websocket.send_json({"type": "identify", "token": "forged"})
+            test_client.portal.call(hub.broadcast, {"type": "ping"})
+            assert websocket.receive_json() == {"type": "ping"}
+
+            delivered = test_client.portal.call(hub.send_to_user, 42, {"type": "booking.expiring"})
+
+            assert delivered == 0
+            test_client.portal.call(hub.broadcast, {"type": "pong"})
+            assert websocket.receive_json() == {"type": "pong"}  # nothing personal in between
+    finally:
+        app.dependency_overrides.pop(get_token_authenticator, None)
 
 
 def test_websocket_ignores_garbage_messages() -> None:
     with TestClient(app) as test_client, test_client.websocket_connect("/api/ws") as websocket:
         websocket.send_text("not json")
-        websocket.send_json({"type": "identify", "user_id": "not-a-number"})
+        websocket.send_json({"type": "identify", "token": 12345})
         test_client.portal.call(hub.broadcast, {"type": "ping"})
 
         assert websocket.receive_json() == {"type": "ping"}

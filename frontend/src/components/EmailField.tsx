@@ -21,11 +21,13 @@ export function EmailField({ user, onSave }: EmailFieldProps) {
   const [serverProblem, setServerProblem] = useState<string | null>(null)
   // a failed request: not the rider's fault, so the field is not marked invalid
   const [saveFailed, setSaveFailed] = useState(false)
+  // another account signs in with that address
+  const [taken, setTaken] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<{ email: string | null } | null>(null)
 
   const trimmed = value.trim()
-  const problem = trimmed ? emailProblem(trimmed) : null
+  const problem = trimmed ? emailProblem(trimmed) : 'empty'
   const formatHint = serverProblem ? emailHint(serverProblem) : touched && problem ? emailHint(problem) : null
   const dirty = trimmed !== (user.email ?? '')
 
@@ -38,6 +40,7 @@ export function EmailField({ user, onSave }: EmailFieldProps) {
     setSaving(true)
     setServerProblem(null)
     setSaveFailed(false)
+    setTaken(false)
     try {
       const result = await onSave(trimmed)
       setSaved({ email: result.email })
@@ -45,6 +48,8 @@ export function EmailField({ user, onSave }: EmailFieldProps) {
     } catch (error) {
       if (error instanceof ApiError && error.code === 'invalid_email') {
         setServerProblem(String(error.detail.problem ?? ''))
+      } else if (error instanceof ApiError && error.code === 'email_taken') {
+        setTaken(true)
       } else {
         setSaveFailed(true)
       }
@@ -56,7 +61,7 @@ export function EmailField({ user, onSave }: EmailFieldProps) {
   return (
     <form className="email-field" onSubmit={submit} noValidate data-testid="email-field">
       <label className="email-field__label" htmlFor="account-email">
-        Почта для чеков
+        Почта (вход и чеки)
       </label>
       <div className="email-field__row">
         <input
@@ -74,6 +79,7 @@ export function EmailField({ user, onSave }: EmailFieldProps) {
             setValue(event.target.value)
             setServerProblem(null)
             setSaveFailed(false)
+            setTaken(false)
             setSaved(null)
           }}
           onBlur={() => setTouched(true)}
@@ -88,21 +94,19 @@ export function EmailField({ user, onSave }: EmailFieldProps) {
       </div>
       <p
         id="account-email-hint"
-        className={`email-field__hint ${formatHint || saveFailed ? 'email-field__hint--error' : ''}`}
+        className={`email-field__hint ${formatHint || saveFailed || taken ? 'email-field__hint--error' : ''}`}
         aria-live="polite"
       >
         {formatHint ??
-          (saveFailed
+          (taken
+            ? 'Аккаунт с этой почтой уже есть'
+            : saveFailed
             ? 'Не удалось сохранить адрес, попробуйте ещё раз'
             : saved !== null
-              ? saved.email
-                ? `Сохранено: чеки будут приходить на ${saved.email}`
-                : `Адрес очищен: чеки идут на ${user.mail_address || 'адрес из имени'}`
+              ? `Сохранено: входите с ${saved.email ?? ''}, чеки придут туда же`
               : user.email
                 ? `Чеки приходят на ${user.email}`
-                : user.mail_address
-                  ? `Пока адрес не указан, чеки идут на ${user.mail_address}`
-                  : 'Пока адрес не указан, чеки идут на адрес из имени')}
+                : `Пока адрес не указан, чеки идут на ${user.mail_address || 'адрес из имени'}`)}
       </p>
     </form>
   )

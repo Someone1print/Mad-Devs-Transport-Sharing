@@ -1,24 +1,13 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import BaseModel, ConfigDict, computed_field
 
 from app.services.mail import address_for
 
 
-class UserCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=64)
-
-    @field_validator("name")
-    @classmethod
-    def strip_and_require_text(cls, value: str) -> str:
-        stripped = value.strip()
-        if not stripped:
-            raise ValueError("name must not be blank")
-        return stripped
-
-
 class UserEmailUpdate(BaseModel):
-    """`""` or `null` clears the address; the format itself is checked in the endpoint."""
+    """The new login and receipt address; format, domain and uniqueness are checked in the
+    endpoint (an empty value is refused: the address is how the user signs in)."""
 
     email: str | None = None
 
