@@ -77,6 +77,9 @@ class RecordingClient:
         self.fetches += 1
         return payload
 
+    def fetch_zones(self) -> list[dict[str, Any]]:
+        return []  # no zones: user rides fall back to the central area
+
     def send_telemetry(self, code: str, lat: float, lon: float, battery: int) -> dict[str, Any]:
         self.telemetry.append(code)
         return {"code": code, "status": "available"}

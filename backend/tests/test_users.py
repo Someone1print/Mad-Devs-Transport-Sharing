@@ -1,7 +1,12 @@
+import dns.resolver
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.users import get_domain_checker
+from app.main import app
+from app.services.mail_domain import DomainChecker
 from tests.test_bookings import make_scooter
+from tests.test_mail_domain import FakeResolver, Rdata
 from tests.test_receipt_email_and_history import finished_ride
 
 
@@ -100,3 +105,35 @@ async def test_receipt_goes_to_the_entered_address_or_the_stub(
 
     # newest first: the second receipt went to the entered address, the first to the stub
     assert [e["to_address"] for e in emails] == ["rider@example.com", "rider@example.invalid"]
+
+
+async def test_saving_an_address_checks_that_its_domain_receives_mail(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The DNS check runs after the format check and only for a non-empty address; the app's
+    default checker is switched off in tests, so a fake resolver is injected here."""
+    resolver = FakeResolver({"MX": dns.resolver.NXDOMAIN()})
+    app.dependency_overrides[get_domain_checker] = lambda: DomainChecker(
+        enabled=True, timeout=2.0, resolver=resolver
+    )
+    try:
+        created = (await client.post("/api/users", json={"name": "Dana"})).json()
+        hdrs = {"X-User-Id": str(created["id"])}
+
+        typo = await client.patch("/api/users/me", json={"email": "dana@gmail.con"}, headers=hdrs)
+        bad_format = await client.patch("/api/users/me", json={"email": "dana@x"}, headers=hdrs)
+        queries_so_far = list(resolver.queries)
+        resolver.answers["MX"] = [Rdata("alt1.gmail-smtp-in.l.google.com.")]
+        saved = await client.patch("/api/users/me", json={"email": "dana@gmail.com"}, headers=hdrs)
+        cleared = await client.patch("/api/users/me", json={"email": ""}, headers=hdrs)
+    finally:
+        app.dependency_overrides.pop(get_domain_checker, None)
+
+    assert typo.status_code == 422
+    assert typo.json()["detail"]["code"] == "invalid_email"
+    assert typo.json()["detail"]["problem"] == "no_mail_server"
+    assert bad_format.json()["detail"]["problem"] == "domain"
+    assert queries_so_far == [("gmail.con", "MX", 2.0)]  # a format problem never reaches DNS
+    assert saved.status_code == 200 and saved.json()["email"] == "dana@gmail.com"
+    assert cleared.status_code == 200 and cleared.json()["email"] is None
+    assert [q[0] for q in resolver.queries] == ["gmail.con", "gmail.com"]  # clearing asks nothing

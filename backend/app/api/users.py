@@ -4,12 +4,25 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser, api_error
+from app.core.config import settings
 from app.db.session import get_db
 from app.models import User
 from app.schemas.user import UserCreate, UserEmailUpdate, UserOut
 from app.services.mail import email_problem
+from app.services.mail_domain import DomainChecker, system_resolver
 
 router = APIRouter()
+
+
+def get_domain_checker() -> DomainChecker:
+    """The DNS check of an address domain, configured from the settings at request time (so a
+    test can switch it off); tests of the check itself override this with a fake resolver."""
+    lifetime = settings.email_domain_check_timeout_seconds
+    return DomainChecker(
+        enabled=settings.email_domain_check,
+        timeout=lifetime,
+        resolver=system_resolver(per_try_timeout=lifetime / 2),
+    )
 
 
 @router.post("/users", status_code=status.HTTP_201_CREATED, summary="Register by name")
@@ -26,18 +39,24 @@ async def create_user(
 
 @router.patch("/users/me", summary="Set or clear the e-mail for receipts")
 async def update_email(
-    payload: UserEmailUpdate, user: CurrentUser, session: Annotated[AsyncSession, Depends(get_db)]
+    payload: UserEmailUpdate,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    checker: Annotated[DomainChecker, Depends(get_domain_checker)],
 ) -> UserOut:
-    """422 `invalid_email` names the failed rule; the client shows the matching hint."""
+    """422 `invalid_email` names the failed rule (format first, then the domain's mail server
+    via DNS); the client shows the matching hint."""
     email = (payload.email or "").strip() or None
-    if email is not None and (problem := email_problem(email)) is not None:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail={
-                **api_error("invalid_email", f"E-mail format problem: {problem}"),
-                "problem": problem,
-            },
-        )
+    if email is not None:
+        problem = email_problem(email) or await checker.problem(email.rsplit("@", 1)[1])
+        if problem is not None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={
+                    **api_error("invalid_email", f"E-mail problem: {problem}"),
+                    "problem": problem,
+                },
+            )
     user.email = email
     await session.commit()
     await session.refresh(user)

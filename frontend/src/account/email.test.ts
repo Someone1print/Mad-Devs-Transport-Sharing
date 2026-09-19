@@ -32,4 +32,9 @@ describe('emailProblem', () => {
     }
     expect(emailHint('something_new')).toBe('Проверьте формат адреса')
   })
+
+  it('has a hint for the server-only DNS check of the domain', () => {
+    // the client cannot ask DNS; the server reports `no_mail_server` for gmail.con and the like
+    expect(emailHint('no_mail_server')).toBe('У домена нет почтового сервера — проверьте адрес')
+  })
 })

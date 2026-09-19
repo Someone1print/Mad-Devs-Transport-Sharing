@@ -12,8 +12,8 @@ class ZoneDefinition:
 
 
 # A decagon around the centre of Bishkek: roughly Zhibek Zholu in the north, the railway in the
-# south, Manas avenue in the west and Ibraimov street in the east. The simulator's riding area
-# (SIM_RIDE_BBOX) is deliberately wider, so rides can end up outside this zone.
+# south, Manas avenue in the west and Ibraimov street in the east. The simulator reads it via
+# GET /api/zones and keeps user rides inside; some seeded scooters stand outside on purpose.
 BISHKEK_CENTER_ZONE = ZoneDefinition(
     name="Центр Бишкека",
     points=(

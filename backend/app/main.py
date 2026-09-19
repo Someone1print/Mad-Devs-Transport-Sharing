@@ -7,10 +7,12 @@ from datetime import timedelta
 from fastapi import FastAPI
 
 from app.api.router import api_router
+from app.api.users import get_domain_checker
 from app.core.config import settings
 from app.db.session import async_session_factory, engine
 from app.realtime.hub import hub
 from app.services.booking_sweeper import run_booking_sweeper
+from app.services.mail_domain import warm_up
 
 API_PREFIX = "/api"
 
@@ -33,10 +35,13 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             name="booking-sweeper",
         )
     application.state.booking_sweeper = sweeper
+    # prime the DNS path for the e-mail domain check (no-op when the check is off)
+    dns_warm_up = asyncio.create_task(warm_up(get_domain_checker()), name="dns-warm-up")
     try:
         yield
     finally:
         stop.set()
+        dns_warm_up.cancel()
         if sweeper is not None:
             await sweeper
         await engine.dispose()

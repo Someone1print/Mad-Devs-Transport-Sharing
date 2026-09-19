@@ -37,6 +37,8 @@ jobs:
       POSTGRES_USER: scooter
       POSTGRES_PASSWORD: scooter
       POSTGRES_DB: scooter
+      # the e-mail domain check asks real DNS; tests must not depend on the network
+      EMAIL_DOMAIN_CHECK: "false"
     steps:
       - uses: actions/checkout@v7
 

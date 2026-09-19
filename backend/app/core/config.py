@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # Time zone for human-readable times in e-mails (the map is Bishkek; API stays in UTC).
     local_timezone: str = "Asia/Bishkek"
 
+    # On saving an address, ask DNS whether its domain receives mail (MX, else A/AAAA); a
+    # domain without a mail server is refused with a hint. Off in CI and tests (no network);
+    # DNS trouble within the timeout never blocks the rider, it only logs a warning.
+    email_domain_check: bool = True
+    email_domain_check_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
+
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_user: str = "scooter"
