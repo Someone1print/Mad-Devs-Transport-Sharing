@@ -19,7 +19,8 @@ export interface ScooterFeed {
 }
 
 interface FeedOptions {
-  /** Once known, the socket identifies itself so personal booking events can be delivered. */
+  /** The signed-in user: the socket is reopened when it changes, because the server binds a
+   * socket to a user by the session cookie at the handshake (sign-in and sign-out change it). */
   userId: number | null
   onBookingEvent?: (event: BookingEvent) => void
   onRideEvent?: (event: RideEvent) => void
@@ -30,34 +31,27 @@ interface FeedOptions {
 
 const MAX_RECONNECT_DELAY_MS = 15_000
 
-function identify(socket: WebSocket | null, userId: number | null): void {
-  if (socket !== null && socket.readyState === WebSocket.OPEN && userId !== null) {
-    socket.send(JSON.stringify({ type: 'identify', user_id: userId }))
-  }
-}
-
 /**
  * Keeps the fleet in sync with the server: opens the WebSocket first, then loads the full
  * list, so nothing published in between is lost (stale data is dropped by `updated_at`).
- * Reconnects with exponential backoff and reloads the list after every reconnect.
+ * Reconnects with exponential backoff and reloads the list after every reconnect. The
+ * browser's session cookie travels with the handshake, so personal events need no extra step.
  */
 export function useScooterFeed(options: FeedOptions): ScooterFeed {
   const { userId, onBookingEvent, onRideEvent, onEmail, onReconnect } = options
   const [scooters, setScooters] = useState<ScooterStore>(emptyStore)
   const [connection, setConnection] = useState<ConnectionState>('connecting')
   const socketRef = useRef<WebSocket | null>(null)
-  const userIdRef = useRef(userId)
   const onBookingEventRef = useRef(onBookingEvent)
   const onRideEventRef = useRef(onRideEvent)
   const onEmailRef = useRef(onEmail)
   const onReconnectRef = useRef(onReconnect)
   useEffect(() => {
-    userIdRef.current = userId
     onBookingEventRef.current = onBookingEvent
     onRideEventRef.current = onRideEvent
     onEmailRef.current = onEmail
     onReconnectRef.current = onReconnect
-  }, [userId, onBookingEvent, onRideEvent, onEmail, onReconnect])
+  }, [onBookingEvent, onRideEvent, onEmail, onReconnect])
 
   useEffect(() => {
     let disposed = false
@@ -83,7 +77,6 @@ export function useScooterFeed(options: FeedOptions): ScooterFeed {
         attempt = 0
         connections += 1
         setConnection('live')
-        identify(socket, userIdRef.current)
         void loadSnapshot()
         if (connections > 1) {
           onReconnectRef.current?.()
@@ -120,11 +113,6 @@ export function useScooterFeed(options: FeedOptions): ScooterFeed {
       window.clearTimeout(reconnectTimer)
       socketRef.current?.close()
     }
-  }, [])
-
-  // the rider may register after the socket opened: identify as soon as the id is known
-  useEffect(() => {
-    identify(socketRef.current, userId)
   }, [userId])
 
   return { scooters, connection }

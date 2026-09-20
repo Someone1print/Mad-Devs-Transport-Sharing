@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     email_domain_check: bool = True
     email_domain_check_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
 
+    # Accounts: sessions live this long from sign-in (no sliding renewal); the session cookie
+    # gets the Secure flag only behind HTTPS; passwords are checked for length only.
+    session_ttl_days: int = Field(default=30, ge=1, le=365)
+    session_cookie_secure: bool = False
+    password_min_length: int = Field(default=8, ge=1, le=64)
+
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_user: str = "scooter"

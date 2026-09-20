@@ -6,8 +6,8 @@ from datetime import timedelta
 
 from fastapi import FastAPI
 
+from app.api.account_checks import get_domain_checker
 from app.api.router import api_router
-from app.api.users import get_domain_checker
 from app.core.config import settings
 from app.db.session import async_session_factory, engine
 from app.realtime.hub import hub

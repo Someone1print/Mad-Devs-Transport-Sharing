@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.models import Email, Ride, Scooter, ScooterStatus
 from app.realtime.hub import hub
 from app.seed import seed_zones
-from tests.test_bookings import make_user
+from tests.test_bookings import headers, make_user, user_id
 from tests.test_rides_api import FakeSocket, booked_via_api
 from tests.test_rides_service import OUTSIDE
 
@@ -35,7 +35,7 @@ async def started_ride(client: AsyncClient, session: AsyncSession) -> tuple[dict
 def listening(hdrs: dict[str, str]) -> FakeSocket:
     listener = FakeSocket()
     hub.register(listener)  # type: ignore[arg-type]
-    hub.identify(listener, int(hdrs["X-User-Id"]))  # type: ignore[arg-type]
+    hub.identify(listener, user_id(hdrs))  # type: ignore[arg-type]
     return listener
 
 
@@ -222,7 +222,7 @@ async def test_get_ride_is_private(client: AsyncClient, db_session: AsyncSession
     other = await make_user(db_session, "Other")
 
     mine = await client.get(f"/api/rides/{ride_id}", headers=hdrs)
-    theirs = await client.get(f"/api/rides/{ride_id}", headers={"X-User-Id": str(other.id)})
+    theirs = await client.get(f"/api/rides/{ride_id}", headers=headers(other))
     unknown = await client.get("/api/rides/999999", headers=hdrs)
 
     assert mine.status_code == 200 and mine.json()["id"] == ride_id

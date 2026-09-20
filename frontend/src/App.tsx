@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 
 import { updateEmail } from './account/email'
+import { changePassword } from './api/auth'
 import { useMailbox } from './account/useMailbox'
 import { useRideHistory } from './account/useRideHistory'
 
@@ -61,15 +62,20 @@ function App() {
   const updateUser = currentUser.updateUser
   const saveEmail = useCallback(
     async (email: string) => {
-      if (userId === null) {
-        throw new Error('no user')
-      }
-      const saved = await updateEmail(userId, email)
+      const saved = await updateEmail(email)
       updateUser(saved)
       return saved
     },
-    [userId, updateUser],
+    [updateUser],
   )
+  const savePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    await changePassword(currentPassword, newPassword)
+  }, [])
+  const logout = currentUser.logout
+  const signOut = useCallback(() => {
+    setAccount(null)
+    void logout()
+  }, [logout])
   const mailbox = useMailbox(userId)
   const history = useRideHistory(userId, lastFinishedId)
   const clearBooking = booking.clear
@@ -180,8 +186,8 @@ function App() {
                 Почта{mailbox.unread > 0 ? ` · ${mailbox.unread}` : ''}
               </button>
               {user.name}
-              <button type="button" className="link" onClick={currentUser.signOut}>
-                сменить
+              <button type="button" className="link" onClick={signOut} data-testid="sign-out">
+                выйти
               </button>
             </span>
           )}
@@ -243,6 +249,8 @@ function App() {
           onRetryHistory={() => void history.refresh()}
           onRetryMail={() => void mailbox.refresh()}
           onSaveEmail={saveEmail}
+          onChangePassword={savePassword}
+          onLogout={signOut}
           onClose={() => setAccount(null)}
         />
       )}
@@ -251,9 +259,8 @@ function App() {
       {currentUser.state.status !== 'ready' && (
         <UserGate
           loading={currentUser.state.status === 'loading'}
-          known={currentUser.state.status === 'anonymous' ? currentUser.state.known : []}
           onRegister={currentUser.register}
-          onContinue={currentUser.continueAs}
+          onLogin={currentUser.login}
         />
       )}
       <ToastStack toasts={toasts} onDismiss={dismiss} />

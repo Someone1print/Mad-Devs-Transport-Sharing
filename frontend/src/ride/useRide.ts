@@ -93,7 +93,7 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
     }
     const epoch = epochRef.current
     const stale = () => epochRef.current !== epoch // the rider changed while we waited
-    const ride = await fetchActiveRide(userId)
+    const ride = await fetchActiveRide()
     if (stale()) {
       return
     }
@@ -111,7 +111,7 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
     }
     let gone: Ride | null
     try {
-      gone = await fetchRide(userId, remembered)
+      gone = await fetchRide(remembered)
     } catch (error) {
       if (error instanceof ApiError && (error.status === 404 || error.status === 403)) {
         forgetRide(userId) // nothing to come back to
@@ -188,7 +188,7 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
         return false
       }
       return run(
-        () => startRide(userId, bookingId),
+        () => startRide(bookingId),
         (ride) => notify({ kind: 'success', text: `Поездка на ${ride.scooter_code} началась` }),
       )
     },
@@ -199,21 +199,21 @@ export function useRide({ userId, notify, onFinished }: UseRideOptions): RideAct
     if (userId === null || active === null) {
       return
     }
-    await run(() => pauseRide(userId, active.id))
+    await run(() => pauseRide(active.id))
   }, [userId, active, run])
 
   const resume = useCallback(async () => {
     if (userId === null || active === null) {
       return
     }
-    await run(() => resumeRide(userId, active.id))
+    await run(() => resumeRide(active.id))
   }, [userId, active, run])
 
   const finish = useCallback(async () => {
     if (userId === null || active === null) {
       return
     }
-    await run(() => finishRide(userId, active.id), ended)
+    await run(() => finishRide(active.id), ended)
   }, [userId, active, run, ended])
 
   const dismissReceipt = useCallback(() => setFinished(null), [])

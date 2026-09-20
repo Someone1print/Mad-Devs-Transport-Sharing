@@ -126,7 +126,10 @@ async def committed_db(test_database_url: str) -> AsyncIterator[async_sessionmak
     finally:
         app.dependency_overrides.pop(get_db, None)
         async with engine.begin() as connection:
-            tables = "emails, ride_segments, rides, bookings, users, scooters, service_zones"
+            tables = (
+                "emails, ride_segments, rides, bookings, user_sessions, users, scooters, "
+                "service_zones"
+            )
             await connection.execute(text(f"TRUNCATE TABLE {tables} RESTART IDENTITY CASCADE"))
         await engine.dispose()
 

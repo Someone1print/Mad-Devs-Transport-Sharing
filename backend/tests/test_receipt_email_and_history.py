@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.models import Email
 from app.realtime.hub import hub
 from app.seed import seed_zones
-from tests.test_bookings import headers, make_scooter, make_user
+from tests.test_bookings import headers, make_scooter, make_user, user_id
 from tests.test_rides_api import FakeSocket, booked_via_api
 
 INSIDE = (42.8756, 74.6036)
@@ -89,7 +89,7 @@ async def test_double_finish_does_not_send_a_second_email(
     hdrs = ride["_headers"]
     listener = FakeSocket()
     hub.register(listener)  # type: ignore[arg-type]
-    hub.identify(listener, int(hdrs["X-User-Id"]))  # type: ignore[arg-type]
+    hub.identify(listener, user_id(hdrs))  # type: ignore[arg-type]
 
     clock.set(600)
     try:
@@ -111,7 +111,7 @@ async def test_finish_survives_a_failing_receipt_insert_and_the_retry_heals_it(
     ).json()["id"]
     listener = FakeSocket()
     hub.register(listener)  # type: ignore[arg-type]
-    hub.identify(listener, int(hdrs["X-User-Id"]))  # type: ignore[arg-type]
+    hub.identify(listener, user_id(hdrs))  # type: ignore[arg-type]
     # the insert itself fails inside the database: the class of failure the review found
     monkeypatch.setattr(
         "app.services.mail.address_for", lambda name: "x" * 300 + "@example.invalid"
@@ -175,7 +175,7 @@ async def test_receipt_email_is_announced_to_the_rider_over_the_socket(
     ).json()["id"]
     listener = FakeSocket()
     hub.register(listener)  # type: ignore[arg-type]
-    hub.identify(listener, int(hdrs["X-User-Id"]))  # type: ignore[arg-type]
+    hub.identify(listener, user_id(hdrs))  # type: ignore[arg-type]
     try:
         clock.set(60)
         await client.post(f"/api/rides/{ride_id}/finish", headers=hdrs)

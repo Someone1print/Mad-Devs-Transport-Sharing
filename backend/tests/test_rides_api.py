@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.models import Ride, RideStatus, Scooter, ScooterStatus
 from app.realtime.hub import hub
 from app.seed import seed_zones
-from tests.test_bookings import headers, make_scooter, make_user
+from tests.test_bookings import headers, make_scooter, make_user, user_id
 
 INSIDE = (42.8756, 74.6036)
 OUTSIDE = (42.8500, 74.6000)
@@ -49,7 +49,7 @@ async def test_start_ride_returns_201_then_200_for_the_same_booking(
     hdrs, booking_id = await booked_via_api(client, db_session)
     listener = FakeSocket()
     hub.register(listener)  # type: ignore[arg-type]
-    hub.identify(listener, int(hdrs["X-User-Id"]))  # type: ignore[arg-type]
+    hub.identify(listener, user_id(hdrs))  # type: ignore[arg-type]
     try:
         first = await client.post("/api/rides", json={"booking_id": booking_id}, headers=hdrs)
         again = await client.post("/api/rides", json={"booking_id": booking_id}, headers=hdrs)
@@ -102,7 +102,7 @@ async def test_pause_resume_and_finish_with_receipt(
     ).json()["id"]
     listener = FakeSocket()
     hub.register(listener)  # type: ignore[arg-type]
-    hub.identify(listener, int(hdrs["X-User-Id"]))  # type: ignore[arg-type]
+    hub.identify(listener, user_id(hdrs))  # type: ignore[arg-type]
     try:
         clock.set(90)
         paused = await client.post(f"/api/rides/{ride_id}/pause", headers=hdrs)

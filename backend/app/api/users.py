@@ -1,69 +1,91 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser, api_error
-from app.core.config import settings
+from app.api.account_checks import address_problem, get_domain_checker
+from app.api.deps import CurrentToken, CurrentUser, api_error
 from app.db.session import get_db
-from app.models import User
-from app.schemas.user import UserCreate, UserEmailUpdate, UserOut
-from app.services.mail import email_problem
-from app.services.mail_domain import DomainChecker, system_resolver
+from app.schemas.auth import PasswordChangeIn
+from app.schemas.user import UserEmailUpdate, UserOut
+from app.services.auth import (
+    AuthError,
+    change_password,
+    normalize_email,
+    password_problem,
+    registered_user_by_email,
+)
+from app.services.mail_domain import DomainChecker
+
+__all__ = ["get_domain_checker", "router"]
 
 router = APIRouter()
 
 
-def get_domain_checker() -> DomainChecker:
-    """The DNS check of an address domain, configured from the settings at request time (so a
-    test can switch it off); tests of the check itself override this with a fake resolver."""
-    lifetime = settings.email_domain_check_timeout_seconds
-    return DomainChecker(
-        enabled=settings.email_domain_check,
-        timeout=lifetime,
-        resolver=system_resolver(per_try_timeout=lifetime / 2),
-    )
-
-
-@router.post("/users", status_code=status.HTTP_201_CREATED, summary="Register by name")
-async def create_user(
-    payload: UserCreate, session: Annotated[AsyncSession, Depends(get_db)]
-) -> UserOut:
-    """Create a user from a display name; the client keeps the returned id."""
-    user = User(name=payload.name)
-    session.add(user)
-    await session.commit()
-    await session.refresh(user)
+@router.get("/users/me", summary="Current user")
+async def get_me(user: CurrentUser) -> UserOut:
+    """The user behind the session; 401 means the client must sign in."""
     return UserOut.model_validate(user)
 
 
-@router.patch("/users/me", summary="Set or clear the e-mail for receipts")
+@router.patch("/users/me", summary="Change the e-mail (login and receipt address)")
 async def update_email(
     payload: UserEmailUpdate,
     user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
     checker: Annotated[DomainChecker, Depends(get_domain_checker)],
 ) -> UserOut:
-    """422 `invalid_email` names the failed rule (format first, then the domain's mail server
-    via DNS); the client shows the matching hint."""
-    email = (payload.email or "").strip() or None
-    if email is not None:
-        problem = email_problem(email) or await checker.problem(email.rsplit("@", 1)[1])
-        if problem is not None:
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail={
-                    **api_error("invalid_email", f"E-mail problem: {problem}"),
-                    "problem": problem,
-                },
-            )
+    """422 `invalid_email` names the failed rule (`empty`, format, or the domain's mail server
+    via DNS); 409 `email_taken` when another account signs in with it."""
+    raw = payload.email or ""
+    await address_problem(raw, checker)
+    email = normalize_email(raw)
+    taken = HTTPException(
+        status.HTTP_409_CONFLICT,
+        detail=api_error("email_taken", "An account with this e-mail already exists"),
+    )
+    owner = await registered_user_by_email(session, email)
+    if owner is not None and owner.id != user.id:
+        raise taken
     user.email = email
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:  # a concurrent change to the same address
+        await session.rollback()
+        raise taken from exc
     await session.refresh(user)
     return UserOut.model_validate(user)
 
 
-@router.get("/users/me", summary="Current user")
-async def get_me(user: CurrentUser) -> UserOut:
-    """Validate the stored id: 401 means the client must register again."""
+@router.post("/users/me/password", summary="Change the password")
+async def update_password(
+    payload: PasswordChangeIn,
+    user: CurrentUser,
+    token: CurrentToken,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> UserOut:
+    """403 `wrong_password` when the current one does not match (403, not 401: the session is
+    fine, and a 401 would make the client sign out); 422 `invalid_password` for the new one;
+    every other device of the user is signed out."""
+    if (problem := password_problem(payload.new_password)) is not None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                **api_error("invalid_password", f"Password problem: {problem}"),
+                "problem": problem,
+            },
+        )
+    try:
+        await change_password(
+            session,
+            user,
+            current=payload.current_password,
+            new=payload.new_password,
+            keep_token=token,
+        )
+    except AuthError as exc:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail=api_error(exc.code, str(exc))
+        ) from exc
     return UserOut.model_validate(user)
